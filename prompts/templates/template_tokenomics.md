@@ -1,39 +1,38 @@
 # Tokenomics
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document the protocol's token economics, including token utility, supply mechanics, distribution, emissions, incentives, and economic design.
+Extract and classify documented information describing the protocol's token economics.
 
-Do not discuss governance mechanics except where the token is directly involved. Do not perform market analysis or discuss price performance.
+Focus on token utility, supply mechanics, issuance, distribution, incentives, and value flow.
+
+Do not analyze token price, valuation, market performance, or investment potential.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
-- Does the protocol have a native token?
-- What is the token's purpose?
-- What utilities does the token provide?
-- What is the maximum supply?
-- What is the circulating supply model?
-- How are tokens minted?
-- Can additional tokens be created?
-- Is there a burn mechanism?
-- How were tokens initially distributed?
-- Are emissions ongoing?
-- Are there vesting schedules?
-- What incentives are tied to the token?
-- How does the token support the protocol's economics?
+- Does the protocol have a token?
+- What is the token used for?
+- How is supply managed?
+- How are new tokens issued?
+- How are tokens distributed?
+- What incentive mechanisms exist?
+- What burn or inflation mechanisms exist?
+- What restrictions or requirements exist?
 
-Do not discuss:
+Do not include:
 
-- Price
+- Token price
 - Market capitalization
-- FDV
-- Trading performance
-- Governance processes beyond token utility
-- Historical price action
+- Trading volume
+- Historical price performance
+- Investment analysis
+- Community sentiment
 
 ---
 
@@ -41,102 +40,255 @@ Do not discuss:
 
 ## Token Overview
 
+Extract:
+
+- Token name
+- Token symbol
+- Token standard
+- Primary purpose
+
+State **Not applicable** if the protocol has no native token.
+
+---
+
 ## Token Utility
+
+For each documented utility:
+
+| Utility | Description |
+|----------|-------------|
+
+Examples include:
+
+- Governance
+- Fee payment
+- Staking
+- Collateral
+- Rewards
+- Access
+- Security
+- Revenue sharing
+
+Only include documented utilities.
+
+---
 
 ## Supply Model
 
-## Initial Distribution
+Extract:
 
-## Allocation Breakdown
+- Maximum supply
+- Initial supply
+- Circulating supply (if documented)
+- Inflation model
+- Supply constraints
+
+State **Not documented** where applicable.
+
+---
+
+## Token Issuance
+
+Extract documented issuance mechanisms.
+
+Examples:
+
+- Genesis allocation
+- Scheduled emissions
+- Minting
+- Rewards
+- Validator incentives
+- Liquidity incentives
+
+Record each mechanism separately.
+
+---
+
+## Token Distribution
+
+For each documented allocation:
+
+| Recipient | Allocation | Notes |
+|-----------|------------|-------|
+
+Examples include:
+
+- Treasury
+- Team
+- Investors
+- Foundation
+- Community
+- Liquidity incentives
+- Ecosystem
+- Validators
+
+Only include documented allocations.
+
+---
 
 ## Emissions
 
-## Vesting
+Extract:
+
+- Emission schedule
+- Distribution mechanism
+- Recipients
+- Emission limits
+- Emission conditions
+
+State **Not documented** if unavailable.
+
+---
 
 ## Burn Mechanisms
 
-## Inflation / Deflation Characteristics
+For each documented mechanism:
 
-## Incentive Structure
+| Mechanism | Trigger | Effect |
+|-----------|---------|--------|
 
-## Economic Role
+State **Not documented** if no burn mechanism exists.
+
+---
+
+## Staking
+
+Extract documented staking information.
+
+Examples:
+
+- Eligibility
+- Requirements
+- Rewards
+- Lock periods
+- Slashing
+- Unstaking conditions
+
+Only include documented information.
+
+---
+
+## Incentive Mechanisms
+
+Extract documented token-based incentives.
+
+Examples:
+
+- Liquidity mining
+- Staking rewards
+- Validator rewards
+- Fee rebates
+- Referral incentives
+- Ecosystem incentives
+
+Record each mechanism separately.
+
+---
+
+## Token Restrictions
+
+Extract documented limitations.
+
+Examples:
+
+- Vesting
+- Lockups
+- Transfer restrictions
+- Eligibility requirements
+- Mint restrictions
+- Burn restrictions
 
 ---
 
 # Analyst Notes
 
-Discuss observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
+- Utility concentration
+- Supply management approach
 - Incentive alignment
-- Sustainability
-- Inflation risks
-- Value capture
-- Economic design tradeoffs
-- Long-term token utility
+- Distribution concentration
+- Inflation versus deflation mechanisms
+- Dependence on emissions
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
+
+Do not evaluate token value.
 
 ---
 
 # Risks
 
-Identify token-related risks such as:
+Record only tokenomics-related risks supported by the documented design.
 
-- Inflation
-- Centralized allocation
-- Vesting unlocks
-- Weak value capture
-- Incentive misalignment
-- Token dependency
+Examples:
 
-Do not discuss market price risk.
+- Inflation dependence
+- Concentrated token ownership
+- Treasury dependence
+- Large future unlocks
+- Incentive dependence
+- Broad mint authority
+- Limited utility
 
----
+Do not speculate.
 
-# Research Takeaways
-
-Summarize:
-
-- Purpose of the token
-- Supply mechanics
-- Incentive model
-- Key economic observations
+Do not perform investment analysis.
 
 ---
 
-# Sources
+# Unknowns
 
-List every source used.
+Record important tokenomics information that could not be determined.
+
+Examples:
+
+- Missing supply limits
+- Missing allocation percentages
+- Undefined emissions
+- Missing burn mechanics
+- Missing staking requirements
+- Missing vesting schedules
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Primary token utility
+- Supply model
+- Largest token allocation
+- Largest documented tokenomics risk
+- One tokenomics fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Max supply | ERC-20 contract | |
-| Total supply | ERC-20 contract | |
-| Mint permissions | Contract roles | |
-| Burn mechanism | Transfer events / code | |
-| Token decimals | ERC-20 metadata | |
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+Only include tokenomics claims that would materially affect protocol evaluation.
+
+Examples:
+
+- Maximum supply
+- Mint authority
+- Burn mechanism
+- Treasury allocation
+- Token allocations
+- Vesting contracts
+- Emission schedule
+- Staking configuration
+
+Do not include routine token descriptions.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
-| Max supply | Yes | ERC-20 call |
-| Total supply | Yes | ERC-20 call |
-| Decimals | Yes | ERC-20 metadata |
-| Mint role | Yes | AccessControl inspection |
-| Burn address activity | Yes | Event analysis |
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include ongoing monitoring opportunities for supply changes, emissions, vesting events, minting, burns, or other economically significant token events.

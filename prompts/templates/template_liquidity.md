@@ -1,36 +1,38 @@
 # Liquidity
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document how liquidity is created, maintained, incentivized, and managed within the protocol. Focus on liquidity mechanisms rather than protocol revenue or token economics.
+Extract and classify documented information describing how liquidity is created, managed, utilized, and maintained within the protocol.
 
-Do not discuss historical TVL or trading volume.
+Focus on protocol liquidity mechanisms, liquidity providers, supported assets, incentives, and operational requirements.
+
+Do not analyze tokenomics, governance, market conditions, or TVL unless explicitly documented and necessary to understand liquidity.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
 - How is liquidity provided?
-- Who supplies liquidity?
-- What assets can be deposited?
-- How are liquidity providers incentivized?
-- How is liquidity priced?
-- Are there liquidity protection mechanisms?
-- Can liquidity be withdrawn at any time?
-- Are there lockup periods?
-- Are there protocol-owned liquidity mechanisms?
-- How does the protocol maintain healthy liquidity?
+- Who provides liquidity?
+- What assets can be supplied?
+- How is liquidity used?
+- How is liquidity allocated?
+- What mechanisms manage liquidity?
+- What constraints or requirements exist?
+- What incentives influence liquidity?
 
-Do not discuss:
+Do not include:
 
-- TVL
-- Historical liquidity statistics
-- Market share
-- Trading volume
-- Token price
-- Revenue analysis
+- Market statistics
+- TVL rankings
+- Token price performance
+- Historical growth
+- Community metrics
+- Independent market analysis
 
 ---
 
@@ -38,98 +40,202 @@ Do not discuss:
 
 ## Liquidity Overview
 
+Extract:
+
+- Primary liquidity model
+- Purpose of protocol liquidity
+- Primary liquidity participants
+
+---
+
 ## Liquidity Sources
+
+For each documented source:
+
+| Source | Purpose | Required | Notes |
+|--------|---------|----------|-------|
+
+Examples include:
+
+- User deposits
+- Liquidity providers
+- Treasury
+- External protocols
+- Market makers
+- Vaults
+
+---
 
 ## Supported Assets
 
-## Liquidity Provider Requirements
+For each documented asset:
 
-## Incentive Mechanisms
+| Asset | Purpose | Restrictions |
+|-------|---------|--------------|
 
-## Liquidity Management
+Only include documented supported assets.
 
-## Withdrawal Rules
+---
 
-## Protocol-Owned Liquidity
+## Liquidity Pools
 
-## Liquidity Controls
+For each documented pool:
+
+| Pool | Assets | Purpose | Notes |
+|------|--------|---------|-------|
+
+State **Not documented** if no pools exist.
+
+---
+
+## Liquidity Mechanisms
+
+Extract documented mechanisms such as:
+
+- Deposits
+- Withdrawals
+- Pool balancing
+- Rebalancing
+- Routing
+- Matching
+- Internal liquidity allocation
+
+Record each mechanism separately.
+
+---
+
+## Liquidity Utilization
+
+Extract how protocol liquidity is used.
+
+Examples:
+
+- Lending
+- Swaps
+- Borrowing
+- Yield generation
+- Collateral
+- Settlement
+- Cross-chain transfers
+
+Only include documented uses.
+
+---
+
+## Liquidity Incentives
+
+Extract documented incentives influencing liquidity participation.
+
+Examples:
+
+- Rewards
+- Fee sharing
+- Yield
+- Staking incentives
+- Emissions
+
+Do not explain tokenomics beyond documented incentive mechanisms.
+
+---
+
+## Liquidity Constraints
+
+Extract documented limitations or operational requirements.
+
+Examples:
+
+- Minimum deposits
+- Asset restrictions
+- Pool requirements
+- Capacity limits
+- Withdrawal conditions
+- Lock-up periods
 
 ---
 
 # Analyst Notes
 
-Discuss observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
-- Liquidity sustainability
-- Capital efficiency
-- Incentive quality
-- Dependency on external liquidity
 - Liquidity concentration
-- Design tradeoffs
+- Asset diversity
+- Liquidity flexibility
+- Incentive dependence
+- Capital efficiency
+- Operational complexity
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
 
 ---
 
 # Risks
 
-Identify liquidity-related risks such as:
+Record only liquidity-related risks supported by the documented design.
 
-- Liquidity concentration
-- Liquidity flight
+Examples:
+
+- Concentrated liquidity
+- External liquidity dependence
+- Limited supported assets
+- Withdrawal constraints
 - Incentive dependence
-- Capital inefficiency
-- External liquidity dependency
-- Withdrawal limitations
+- Liquidity fragmentation
 
-Do not analyze market performance.
+Do not speculate.
 
----
-
-# Research Takeaways
-
-Summarize:
-
-- How liquidity is maintained
-- Incentive structure
-- Liquidity resilience
-- Key design observations
+Do not perform market analysis.
 
 ---
 
-# Sources
+# Unknowns
 
-List every source used.
+Record important liquidity information that could not be determined.
+
+Examples:
+
+- Missing supported assets
+- Undefined liquidity providers
+- Missing pool documentation
+- Missing withdrawal requirements
+- Missing incentive documentation
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Primary liquidity model
+- Primary liquidity source
+- Largest operational constraint
+- Largest documented liquidity risk
+- One liquidity fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Supported assets | Contract inspection | |
-| Pool contracts | Factory contracts | |
-| Withdrawal rules | Contract logic | |
-| Incentive contracts | Rewards contracts | |
-| Protocol-owned liquidity | Treasury holdings | |
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+Only include liquidity claims that would materially affect protocol operation or user decisions.
+
+Examples:
+
+- Supported assets
+- Liquidity requirements
+- Withdrawal restrictions
+- Incentive mechanisms
+- Pool configuration
+- Capital allocation mechanisms
+
+Do not include routine descriptions or observable pool lists.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
-| Pool discovery | Yes | Factory contract |
-| Supported assets | Yes | Pool inspection |
-| Incentive contracts | Yes | Rewards contracts |
-| Withdrawal restrictions | Yes | Contract inspection |
-| Protocol-owned liquidity | Yes | Treasury analysis |
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include liquidity changes or operational metrics that would provide meaningful ongoing monitoring.

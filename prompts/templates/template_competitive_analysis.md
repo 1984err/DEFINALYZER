@@ -1,123 +1,209 @@
 # Competitive Analysis
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document the protocol's competitive position within the DeFi ecosystem. Compare its design, functionality, and strategic positioning against similar protocols using only documented evidence and reasonable analyst observations.
+Extract and classify documented information that explains how the protocol compares to alternatives.
 
-Do not compare TVL, market share, token price, or historical performance unless explicitly documented in the supplied sources.
+Focus on documented differentiators, market positioning, design choices, and competitive advantages.
+
+Do not perform independent market research or compare against protocols that are not mentioned in the supplied documentation.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
-- What category of protocol is this?
-- Which protocols compete in the same space?
-- What differentiates this protocol?
-- What design choices distinguish it?
-- What advantages are explicitly documented?
-- What tradeoffs are acknowledged?
-- Which users is the protocol targeting?
-- Where does the protocol fit within the broader ecosystem?
+- What problem is the protocol designed to solve?
+- What alternatives are mentioned?
+- What differentiates the protocol?
+- What advantages are claimed?
+- What limitations are acknowledged?
+- What use cases are emphasized?
+- What design decisions distinguish the protocol?
 
-Do not discuss:
+Do not include:
 
-- TVL rankings
-- Market capitalization
-- Token price
-- Trading volume
-- Speculation
-- Undocumented competitor claims
+- Personal opinions
+- Independent comparisons
+- Market rankings
+- TVL comparisons
+- Token price analysis
+- Adoption metrics
+- Community opinions
+- Performance claims that are not documented
 
 ---
 
 # Facts
 
-## Market Category
+## Problem Being Solved
 
-## Comparable Protocols
+Extract:
 
-## Core Differentiators
+- Primary problem
+- Target users
+- Intended outcome
 
-## Competitive Advantages
-
-## Competitive Tradeoffs
+---
 
 ## Target Market
 
-## Ecosystem Position
+Extract:
+
+- Primary users
+- Primary use cases
+- Target ecosystem
+- Target applications
+
+---
+
+## Documented Alternatives
+
+For each documented alternative:
+
+| Alternative | Relationship | Notes |
+|-------------|--------------|-------|
+
+Only include protocols explicitly referenced.
+
+---
+
+## Competitive Differentiators
+
+For each documented differentiator:
+
+| Differentiator | Description |
+|---------------|-------------|
+
+Only include documented differentiators.
+
+---
+
+## Claimed Advantages
+
+Extract documented claims regarding:
+
+- Efficiency
+- Cost
+- Performance
+- Flexibility
+- User experience
+- Developer experience
+- Composability
+- Scalability
+
+Do not evaluate whether the claims are true.
+
+---
+
+## Documented Limitations
+
+Extract documented limitations, tradeoffs, or constraints.
+
+State **Not documented** if none are described.
+
+---
+
+## Design Decisions
+
+Extract documented architectural or operational decisions that distinguish the protocol from alternatives.
+
+---
+
+## Intended Use Cases
+
+Extract documented use cases.
+
+Record each use case separately.
 
 ---
 
 # Analyst Notes
 
-Discuss observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
-- Competitive moat
-- Network effects
-- Switching costs
-- Composability advantages
-- Adoption barriers
-- Strategic positioning
-- Long-term sustainability
+- Market positioning
+- Strength of differentiation
+- Dependence on specific design choices
+- Competitive focus
+- Potential overlap with similar protocols
 
-Clearly distinguish inference from documented facts.
+Do not introduce protocols or competitors not documented in the supplied sources.
+
+Do not speculate.
 
 ---
 
 # Risks
 
-Identify competitive risks such as:
+Record only risks related to competitive positioning that are directly supported by the documented information.
 
-- Strong incumbents
-- Low switching costs
-- Feature parity
-- Ecosystem dependence
-- User acquisition challenges
-- Competitive pressure
+Examples:
 
-Do not speculate about future market outcomes.
+- Heavy dependence on another protocol
+- Limited supported ecosystems
+- Narrow target audience
+- Documented operational limitations
 
----
+Do not speculate.
 
-# Research Takeaways
-
-Summarize:
-
-- Primary competitive strengths
-- Primary weaknesses
-- Strategic positioning
-- Key analyst observations
+Do not perform market analysis.
 
 ---
 
-# Sources
+# Unknowns
 
-List every source used.
+Record important competitive information that could not be determined.
+
+Examples:
+
+- No documented competitors
+- No documented differentiators
+- No documented target users
+- Missing limitations
+- Missing intended use cases
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Primary problem solved
+- Primary competitive differentiator
+- Primary target user
+- Largest documented limitation
+- One key competitive fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+Only include high-impact competitive claims that would materially affect protocol evaluation.
+
+Examples:
+
+- Performance improvements
+- Cost reductions
+- Throughput claims
+- Efficiency claims
+- Compatibility claims
+- Scalability claims
+
+Do not include subjective marketing language or descriptive statements.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
-| Protocol integrations | Yes | Contract inspection |
-| Supported networks | Yes | Deployment discovery |
-| Feature verification | Partial | Contract capability detection |
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include monitoring or validation opportunities for measurable competitive claims.
+```

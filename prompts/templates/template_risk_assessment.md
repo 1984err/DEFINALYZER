@@ -1,32 +1,38 @@
 # Risk Assessment
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document the protocol's operational, technical, governance, economic, and ecosystem risks. This page serves as a consolidated risk register and should reference other research pages where appropriate rather than duplicating detailed analysis.
+Extract and classify documented information describing the protocol's risks, assumptions, operational limitations, and failure scenarios.
+
+Focus on risks explicitly documented by the protocol or directly implied by its documented design.
+
+Do not perform an independent security review or speculate about undocumented vulnerabilities.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
-- What are the protocol's primary risks?
-- Which risks are technical?
-- Which risks are operational?
-- Which risks arise from governance?
-- Which risks arise from tokenomics?
-- Which risks arise from external dependencies?
-- Which assumptions are critical for safe operation?
-- Which risks are acknowledged by the protocol?
-- Which risks remain unresolved?
-- Which mitigations are documented?
+- What risks are documented?
+- What assumptions does the protocol rely on?
+- What operational limitations exist?
+- What failure scenarios are described?
+- What dependencies introduce risk?
+- What user responsibilities are documented?
+- What mitigations are documented?
 
-Do not discuss:
+Do not include:
 
-- Historical price performance
-- Market speculation
-- Unsupported hypothetical risks
-- Information not documented in the supplied sources
+- Personal opinions
+- Security audit findings
+- Independent vulnerability analysis
+- Exploit history unless documented
+- Speculative attack vectors
+- Market risks
+- Token price risks
 
 ---
 
@@ -34,105 +40,217 @@ Do not discuss:
 
 ## Risk Overview
 
-## Technical Risks
+Extract:
 
-## Governance Risks
+- Primary documented risks
+- Primary operational assumptions
+- Major areas of protocol exposure
 
-## Economic Risks
+---
 
 ## Operational Risks
 
+For each documented operational risk:
+
+| Risk | Cause | Impact | Mitigation |
+|------|-------|--------|------------|
+
+Only include documented risks.
+
+---
+
+## Technical Risks
+
+For each documented technical risk:
+
+| Risk | Description | Mitigation |
+|------|-------------|------------|
+
+Examples include:
+
+- Upgrade process
+- Oracle dependence
+- Cross-chain messaging
+- Infrastructure dependence
+- External protocol reliance
+
+Only include documented risks.
+
+---
+
 ## Dependency Risks
 
-## Regulatory Considerations
+For each documented dependency-related risk:
+
+| Dependency | Risk | Mitigation |
+|------------|------|------------|
+
+Only include documented dependencies.
+
+---
 
 ## User Risks
 
-## Documented Mitigations
+Extract documented risks affecting users.
 
-## Remaining Limitations
+Examples:
+
+- Liquidation
+- Loss of funds
+- Incorrect configuration
+- Slippage
+- Transaction ordering
+- Asset compatibility
+
+Record each separately.
+
+---
+
+## Operational Assumptions
+
+Extract documented assumptions required for correct protocol operation.
+
+Examples:
+
+- Oracle availability
+- Validator honesty
+- Bridge operation
+- External protocol availability
+- User behavior
+
+Only include documented assumptions.
+
+---
+
+## Failure Scenarios
+
+For each documented failure scenario:
+
+| Scenario | Impact | Recovery |
+|----------|--------|----------|
+
+State **Not documented** if unavailable.
+
+---
+
+## Risk Mitigations
+
+Extract documented mechanisms that reduce protocol risk.
+
+Examples:
+
+- Timelocks
+- Circuit breakers
+- Rate limits
+- Collateralization
+- Insurance
+- Redundancy
+- Monitoring
+- Validation
+
+Only include documented mitigations.
+
+---
+
+## User Responsibilities
+
+Extract documented responsibilities required of users.
+
+Examples:
+
+- Managing collateral
+- Monitoring positions
+- Maintaining wallet security
+- Managing approvals
+- Understanding liquidation conditions
+
+Only include documented responsibilities.
 
 ---
 
 # Analyst Notes
 
-Provide analyst observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
-- Overall risk profile
-- Concentration of risk
-- Trust assumptions
-- Operational resilience
-- Areas requiring additional due diligence
-- Comparison of documented mitigations versus remaining exposure
+- Concentration of operational risk
+- Dependence on external systems
+- Reliance on user behavior
+- Diversity of mitigations
+- Overall operational resilience based on documented design
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
+
+Do not perform security analysis.
 
 ---
 
 # Risks
 
-## Critical Risks
+Summarize the highest-impact documented risks.
 
-## High Risks
+Prioritize:
 
-## Medium Risks
+- Protocol operation
+- User funds
+- External dependencies
+- Administrative authority
+- Infrastructure
 
-## Low Risks
-
-For each risk include:
-
-- Description
-- Potential Impact
-- Existing Mitigation
-- Remaining Exposure
+Do not introduce new risks not already documented above.
 
 ---
 
-# Research Takeaways
+# Unknowns
 
-Summarize:
+Record important risk-related information that could not be determined.
 
-- Most significant risks
-- Major mitigations
-- Remaining concerns
-- Recommended areas for additional verification
+Examples:
 
----
-
-# Sources
-
-List every source used.
+- Missing failure scenarios
+- Missing mitigation strategies
+- Missing operational assumptions
+- Missing user responsibilities
+- Missing recovery procedures
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Largest documented protocol risk
+- Largest operational assumption
+- Most significant mitigation
+- Largest dependency-related risk
+- One risk fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Administrative permissions | Contract inspection | |
-| Upgrade authority | Proxy inspection | |
-| Pause capability | Contract roles | |
-| Critical dependencies | Contract registry | |
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Audit findings | Official audit reports | |
-| Known limitations | Official documentation | |
-| Security disclosures | Official documentation | |
+Only include risk claims that would materially affect protocol trust or operation.
+
+Examples:
+
+- Emergency controls
+- Oracle configuration
+- Liquidation parameters
+- Collateral requirements
+- Upgrade permissions
+- Recovery mechanisms
+- Administrative controls
+- Circuit breakers
+
+Do not include routine operational descriptions.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
-| Proxy detection | Yes | EIP-1967 inspection |
-| Admin role discovery | Yes | AccessControl / Ownable |
-| Dependency validation | Yes | Contract inspection |
-| Registry verification | Yes | Registry contract queries |
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include ongoing monitoring opportunities for operational risk, protocol assumptions, or critical configuration changes.

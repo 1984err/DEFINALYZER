@@ -1,0 +1,10 @@
+{
+  "protocol": "Derive",
+  "domain": "docs.derive.xyz",
+  "output_directory": "C:\\Users\\Valentin\\Documents\\PYTHON SCRIPTS\\DEFI RESEARCH\\TOOLS\\DEFINALYZER\\crawler\\output\\derive",
+  "discovered": 69,
+  "saved": 69,
+  "skipped": 0,
+  "failed": 0,
+  "failed_urls": []
+}

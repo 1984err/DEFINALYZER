@@ -1,35 +1,37 @@
 # Integrations & Dependencies
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document the protocol's external integrations, infrastructure dependencies, third-party services, and interoperability. Focus on systems the protocol relies on to function correctly.
+Extract and classify documented information describing the protocol's integrations, dependencies, and external relationships.
 
-Do not perform a security assessment or discuss implementation details beyond what is necessary to explain dependencies.
+Focus on what external systems the protocol relies on, communicates with, or integrates with to function.
+
+Do not analyze tokenomics, governance, security, or protocol architecture except where necessary to explain an integration.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
-- Which external protocols are integrated?
-- Which smart contracts does the protocol depend on?
-- Which oracle providers are used?
-- Which bridges are supported?
-- Which wallets are officially supported?
-- Which infrastructure providers are required?
-- Which SDKs or APIs are available?
-- Which token standards are supported?
-- What external assumptions does the protocol make?
-- Which dependencies are optional versus critical?
+- What protocols does this protocol integrate with?
+- What infrastructure does it depend on?
+- What external services are required?
+- Which dependencies are optional versus required?
+- How do external systems interact with the protocol?
+- What assumptions are made about those dependencies?
+- What risks are introduced by external dependencies?
 
-Do not discuss:
+Do not include:
 
-- Governance
-- Tokenomics
-- Revenue
-- Security audits
-- Market adoption
+- Internal protocol components
+- Governance relationships
+- Token partnerships
+- Marketing partnerships
+- Community collaborations
+- Speculative future integrations
 
 ---
 
@@ -37,101 +39,210 @@ Do not discuss:
 
 ## Integration Overview
 
-## External Protocol Integrations
+Extract:
 
-## Smart Contract Dependencies
+- Overall integration strategy
+- Primary external relationships
+- Purpose of integrations
+
+---
+
+## Protocol Integrations
+
+For each documented protocol integration:
+
+| Protocol | Purpose | Required | Notes |
+|----------|---------|----------|-------|
+
+Only include documented integrations.
+
+---
+
+## Infrastructure Dependencies
+
+For each documented infrastructure dependency:
+
+| Dependency | Purpose | Required | Notes |
+|------------|---------|----------|-------|
+
+Examples include:
+
+- RPC providers
+- Indexers
+- Sequencers
+- Relayers
+- Validators
+- Blockchains
+- Messaging layers
+
+Only include documented dependencies.
+
+---
 
 ## Oracle Dependencies
 
-## Bridge Integrations
+For each documented oracle:
 
-## Wallet Support
+| Oracle | Purpose | Required | Notes |
+|--------|---------|----------|-------|
 
-## Infrastructure Providers
+State **Not documented** if none exist.
 
-## Developer Tooling
+---
 
-## Supported Standards
+## Bridge Dependencies
 
-## Critical Dependencies
+For each documented bridge:
+
+| Bridge | Purpose | Required | Notes |
+|--------|---------|----------|-------|
+
+Only include documented bridges.
+
+---
+
+## Third-Party Services
+
+For each documented service:
+
+| Service | Purpose | Required | Notes |
+|---------|---------|----------|-------|
+
+Examples include:
+
+- APIs
+- Data providers
+- Keeper networks
+- Automation services
+- Identity providers
+- Storage providers
+
+---
+
+## Supported Networks
+
+For each documented blockchain:
+
+| Network | Purpose | Required |
+|---------|---------|----------|
+
+Only include documented networks.
+
+---
+
+## External Asset Dependencies
+
+For each documented external asset:
+
+| Asset | Purpose | Dependency |
+|-------|---------|------------|
+
+Examples include:
+
+- Stablecoins
+- Liquid staking tokens
+- Wrapped assets
+- LP tokens
+- Synthetic assets
+
+---
+
+## Dependency Requirements
+
+Extract documented operational requirements created by external dependencies.
+
+Examples:
+
+- Required availability
+- Required synchronization
+- Required configuration
+- Required trust assumptions
 
 ---
 
 # Analyst Notes
 
-Discuss observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
 - Dependency concentration
-- Vendor lock-in
+- Infrastructure complexity
+- External reliance
 - Ecosystem interoperability
-- Composability
-- External trust assumptions
-- Operational resilience
+- Critical operational dependencies
+- Vendor concentration
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
 
 ---
 
 # Risks
 
-Identify dependency-related risks such as:
+Record only dependency-related risks supported by the documented integrations.
 
-- Oracle dependency
-- Bridge dependency
+Examples:
+
+- Single external dependency
+- Oracle reliance
+- Bridge reliance
 - Infrastructure concentration
-- Third-party failure
-- Cross-protocol contagion
-- Vendor lock-in
+- Cross-chain dependence
+- Third-party service dependency
 
-Do not perform a security assessment.
+Do not speculate.
 
----
-
-# Research Takeaways
-
-Summarize:
-
-- Major integrations
-- Critical dependencies
-- External assumptions
-- Important interoperability observations
+Do not perform security analysis.
 
 ---
 
-# Sources
+# Unknowns
 
-List every source used.
+Record important dependency information that could not be determined.
+
+Examples:
+
+- Missing infrastructure documentation
+- Undefined oracle providers
+- Undocumented bridge usage
+- Unknown external services
+- Missing dependency requirements
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Primary external dependency
+- Most critical integration
+- Largest infrastructure dependency
+- Largest operational dependency
+- One dependency fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Oracle contracts | Contract inspection | |
-| Bridge contracts | Contract inspection | |
-| External protocol addresses | Contract registry | |
-| Supported token standards | Contract interfaces | |
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Wallet support | Official documentation | |
-| SDK availability | Repository / documentation | |
-| Infrastructure providers | Official documentation | |
+Only include dependency claims that would materially affect protocol operation or trust.
+
+Examples:
+
+- Oracle provider
+- Bridge implementation
+- Required infrastructure
+- Cross-chain messaging protocol
+- External protocol reliance
+- Critical third-party services
+
+Do not include routine integration descriptions.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
-| Oracle discovery | Yes | Contract inspection |
-| Bridge discovery | Yes | Contract inspection |
-| Interface detection | Yes | ERC interface inspection |
-| Registry validation | Yes | Registry contract queries |
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include dependency changes or external integrations that would provide meaningful ongoing monitoring.

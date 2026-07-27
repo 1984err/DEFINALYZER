@@ -1,37 +1,38 @@
 # Security
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document the protocol's security architecture, trust assumptions, defensive mechanisms, audits, administrative controls, and known security considerations.
+Extract and classify documented information describing the protocol's security model, security mechanisms, trust assumptions, and defensive controls.
 
-This page focuses on security design rather than governance, tokenomics, or protocol economics.
+Focus on documented security architecture and operational protections.
+
+Do not perform an independent security audit or speculate about vulnerabilities.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
-- What security model does the protocol use?
-- What are the primary trust assumptions?
-- Has the protocol been audited?
-- Which firms performed the audits?
-- Are audit reports publicly available?
-- Does the protocol have a bug bounty?
-- Are contracts upgradeable?
+- What security mechanisms exist?
+- What trust assumptions are documented?
 - What administrative controls exist?
-- Can the protocol be paused?
-- What emergency mechanisms exist?
-- What access control framework is used?
-- What are the known security limitations?
+- What protections exist for user funds?
+- What permissions affect security?
+- What emergency controls exist?
+- What security limitations are documented?
+- What external systems influence protocol security?
 
-Do not discuss:
+Do not include:
 
-- Tokenomics
-- Governance processes
-- Revenue model
+- Personal security opinions
+- Independent vulnerability analysis
+- Speculative attack vectors
 - Market risks
-- Historical exploits unless documented as part of the protocol's security documentation
+- Token price risks
+- General blockchain security advice
 
 ---
 
@@ -39,109 +40,241 @@ Do not discuss:
 
 ## Security Overview
 
-## Security Model
+Extract:
 
-## Trust Assumptions
+- Overall security model
+- Primary security objectives
+- Primary trust assumptions
 
-## Smart Contract Audits
+---
 
-## Bug Bounty Program
+## Security Mechanisms
+
+For each documented mechanism:
+
+| Mechanism | Purpose | Notes |
+|-----------|---------|-------|
+
+Examples include:
+
+- Access control
+- Timelocks
+- Multisig
+- Permission system
+- Role-based access
+- Rate limiting
+- Circuit breakers
+- Pausable contracts
+
+Only include documented mechanisms.
+
+---
 
 ## Access Control
 
-## Upgradeability
+For each documented privileged role:
 
-## Emergency Controls
+| Role | Permission | Restrictions |
+|------|------------|--------------|
 
-## Pause Mechanisms
+Only include documented permissions.
 
-## Administrative Privileges
+---
 
-## Known Security Limitations
+## Administrative Controls
+
+Extract documented administrative capabilities.
+
+Examples:
+
+- Contract upgrades
+- Parameter changes
+- Treasury controls
+- Emergency actions
+- Oracle management
+- Whitelists
+- Blacklists
+
+Only include documented controls.
+
+---
+
+## Trust Assumptions
+
+Extract documented assumptions regarding:
+
+- Administrators
+- Validators
+- Oracles
+- Bridges
+- External protocols
+- Off-chain infrastructure
+- Users
+
+Do not infer assumptions.
+
+---
+
+## Emergency Mechanisms
+
+For each documented mechanism:
+
+| Mechanism | Trigger | Effect |
+|-----------|---------|--------|
+
+Examples include:
+
+- Pause
+- Shutdown
+- Guardian intervention
+- Emergency upgrade
+- Recovery process
+
+State **Not documented** if unavailable.
+
+---
+
+## External Security Dependencies
+
+For each documented dependency:
+
+| Dependency | Security Impact | Notes |
+|------------|-----------------|-------|
+
+Examples:
+
+- Oracle providers
+- Bridges
+- Validators
+- Sequencers
+- Cross-chain messaging
+- Keeper networks
+
+Only include documented dependencies.
+
+---
+
+## User Security Responsibilities
+
+Extract documented responsibilities expected of users.
+
+Examples:
+
+- Wallet security
+- Key management
+- Approval management
+- Collateral monitoring
+- Liquidation monitoring
+
+Only include documented responsibilities.
+
+---
+
+## Security Limitations
+
+Extract documented security limitations or known constraints.
+
+Examples:
+
+- Trusted roles
+- Administrative authority
+- Upgradeability
+- External dependency limitations
+- Operational assumptions
+
+Only include documented limitations.
 
 ---
 
 # Analyst Notes
 
-Discuss observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
-- Security maturity
+- Concentration of privileged authority
+- Degree of decentralization
+- Trust distribution
 - Defense-in-depth
-- Upgrade risk
-- Operational security
-- Centralization tradeoffs
-- Trust minimization
+- External security dependence
+- Operational resilience
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
+
+Do not perform an independent security assessment.
 
 ---
 
 # Risks
 
-Identify security-related risks such as:
+Record only security-related risks supported by the documented design.
 
-- Upgrade risk
-- Admin key risk
-- Multisig dependency
-- Oracle manipulation
-- Bridge dependency
-- Smart contract complexity
-- Centralization
-- Trust assumptions
+Examples:
 
----
+- Privileged administrator access
+- Upgrade authority
+- Oracle dependence
+- Bridge dependence
+- External infrastructure reliance
+- Emergency authority concentration
+- Trusted third parties
 
-# Research Takeaways
+Do not speculate.
 
-Summarize:
-
-- Overall security posture
-- Important trust assumptions
-- Administrative powers
-- Major security observations
+Do not introduce risks not supported by the documentation.
 
 ---
 
-# Sources
+# Unknowns
 
-List every source used.
+Record important security information that could not be determined.
+
+Examples:
+
+- Missing access controls
+- Missing emergency procedures
+- Undefined privileged roles
+- Missing trust assumptions
+- Missing recovery procedures
+- Missing security limitations
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Primary security model
+- Highest-impact security mechanism
+- Largest trust assumption
+- Largest documented security dependency
+- One security fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Proxy implementation | EIP-1967 inspection | |
-| Proxy admin | EIP-1967 inspection | |
-| Multisig owners | Safe contract | |
-| Timelock | Timelock contract | |
-| Pause guardian | Contract roles | |
-| AccessControl roles | Contract inspection | |
-| Ownership | Ownable contract | |
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Audit reports | Official audit documentation | |
-| Bug bounty | Official documentation | |
-| Security policy | Official documentation | |
+Only include security claims that would materially affect protocol trust or user safety.
+
+Examples:
+
+- Contract ownership
+- Upgrade authority
+- Timelock configuration
+- Multisig composition
+- Emergency pause authority
+- Oracle configuration
+- Administrative permissions
+- Access control implementation
+
+Do not include routine security descriptions.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
-| Proxy detection | Yes | EIP-1967 inspection |
-| Proxy admin | Yes | Storage slot inspection |
-| AccessControl roles | Yes | Contract queries |
-| Ownable owner | Yes | owner() call |
-| Pause capability | Yes | ABI inspection |
-| Timelock delay | Yes | Timelock contract |
-| Multisig owners | Yes | Safe contract |
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include ongoing monitoring opportunities for security-critical permissions, configuration changes, or trust assumptions.

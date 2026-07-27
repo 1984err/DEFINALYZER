@@ -1,121 +1,254 @@
 # Architecture
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document how the protocol is designed and operates at a technical level. Focus on protocol components, system interactions, data flow, and trust assumptions.
+Extract and classify the protocol's documented architecture.
 
-Do not discuss tokenomics, governance, or security analysis except where necessary to explain the architecture.
+Focus on **how the protocol is built**, **how it operates**, and **how its components interact**.
+
+Do not document tokenomics, governance, security analysis, or business operations unless required to understand the architecture.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
-- What are the major protocol components?
+- What is the protocol?
+- What are the primary system components?
 - How do the components interact?
-- What is the user workflow?
-- What contracts or services make up the system?
-- What external protocols does the architecture rely on?
-- What are the primary trust assumptions?
-- Is the protocol modular?
-- Is the architecture upgradeable?
+- How do users interact with the protocol?
+- What smart contracts or services exist?
+- What external protocols or infrastructure are required?
+- How do assets and information flow through the protocol?
+- What trust assumptions are documented?
+- How is the protocol upgraded?
+- What architectural patterns are documented?
 
-Do not discuss:
+Do not include:
 
 - Token distribution
+- Token utility
 - Governance processes
 - Revenue model
+- Security assessments
 - Audit history
-- Risk analysis beyond architectural trust assumptions
+- Economic analysis
 
 ---
 
 # Facts
 
+## Protocol Purpose
+
+Extract:
+
+- Primary function
+- Primary users
+- Core protocol objective
+
+---
+
 ## System Overview
+
+Extract:
+
+- High-level architecture
+- Major subsystems
+- Overall protocol structure
+
+---
 
 ## Core Components
 
+For each documented component record:
+
+- Name
+- Purpose
+- Interacts With
+
+---
+
 ## User Workflow
 
-## Smart Contract Architecture
+Extract the documented user flow.
+
+Record each step separately.
+
+Example format:
+
+| Step | Action |
+|------|--------|
+
+Do not combine multiple workflows unless documented.
+
+---
+
+## Smart Contracts
+
+For each documented contract record:
+
+| Contract | Purpose | Upgradeable | Notes |
+|----------|---------|-------------|-------|
+
+State **Not documented** where applicable.
+
+---
 
 ## External Dependencies
 
-## Data Flow
+For each dependency record:
+
+| Dependency | Purpose | Required | Notes |
+|------------|---------|----------|-------|
+
+Include:
+
+- Protocols
+- Bridges
+- Oracles
+- APIs
+- Infrastructure
+- Blockchains
+
+Only include documented dependencies.
+
+---
+
+## Data & Asset Flow
+
+Extract documented flows.
+
+Separate:
+
+### Asset Flow
+
+### Data Flow
+
+Only document observed flows.
+
+---
 
 ## Upgradeability
 
+Extract:
+
+- Upgrade mechanism
+- Proxy pattern
+- Upgrade authority
+- Immutable components
+- Upgrade limitations
+
+---
+
 ## Trust Assumptions
 
+Extract documented assumptions regarding:
+
+- Administrators
+- Validators
+- External dependencies
+- Off-chain services
+- Users
+
+Do not infer assumptions.
+
+---
+
 ## Design Patterns
+
+Identify documented architectural patterns.
+
+Examples:
+
+- Factory
+- Registry
+- Router
+- Vault
+- Adapter
+- Plugin
+- Modular contracts
+- Proxy
+
+Only include documented patterns.
 
 ---
 
 # Analyst Notes
 
-Discuss observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
-- Architectural strengths
+- Separation of responsibilities
 - Modularity
-- Scalability
 - Upgrade strategy
 - Dependency concentration
-- Design tradeoffs
+- Operational complexity
+- Architectural tradeoffs
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
 
 ---
 
 # Risks
 
-Identify architectural risks such as:
+Record only architecture-related risks supported by the documented architecture.
 
+Examples:
+
+- Centralized dependencies
 - Single points of failure
-- External dependencies
-- Centralization
 - Upgrade complexity
+- External protocol reliance
 - Operational assumptions
 
-Do not perform a security assessment.
+Do not perform security analysis.
 
 ---
 
-# Research Takeaways
+# Unknowns
 
-Summarize:
+Record important architectural information that could not be determined.
 
-- How the protocol works
-- Key architectural decisions
-- Important dependencies
-- Major trust assumptions
+Examples:
+
+- Missing documentation
+- Undefined workflows
+- Undocumented upgrade process
+- Undocumented trust assumptions
+- Conflicting documentation
+
+Do not speculate.
 
 ---
 
-# Sources
+# Key Takeaways
 
-List every source used.
+- Primary protocol purpose
+- Most important architectural decision
+- Largest dependency
+- Largest trust assumption
+- One key fact an analyst should remember
 
 ---
 
-# Verification
+# Verification Opportunities
 
-## On-Chain Verification
+Only include high-impact claims that would materially affect protocol evaluation.
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
-## Off-Chain Verification
-
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+Do not include routine architectural descriptions or observable implementation details.
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include checks that would provide meaningful ongoing monitoring or validation.

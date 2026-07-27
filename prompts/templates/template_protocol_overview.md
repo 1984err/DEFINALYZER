@@ -1,35 +1,43 @@
 # Protocol Overview
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Provide a high-level, evidence-based overview of the protocol. Explain what it is, the problem it solves, its intended users, and its role within the DeFi ecosystem.
+Extract and classify the fundamental information required to understand the protocol at a high level.
 
-Do not duplicate information that belongs in other research pages.
+This page serves as the entry point for the protocol and should provide enough context for an analyst to determine:
+
+- What the protocol is
+- What problem it solves
+- Who it serves
+- How it operates at a high level
+
+Do not document implementation details, governance, tokenomics, security, or architecture beyond what is necessary for a high-level understanding.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
 - What is the protocol?
 - What problem does it solve?
-- Who are its intended users?
-- What products or services does it provide?
+- Who is the target user?
+- What are the primary features?
+- What are the primary protocol components?
 - Which blockchain(s) does it support?
-- What are its primary features?
-- What makes the protocol distinct?
-- How does it fit within the broader DeFi ecosystem?
+- What category of protocol is it?
+- What lifecycle stage is documented?
 
-Do not discuss:
+Do not include:
 
-- Tokenomics
-- Governance
-- Security
-- Revenue model
-- Detailed protocol mechanics
-
-Those topics belong in their own research pages.
+- Detailed architecture
+- Governance mechanics
+- Token economics
+- Security analysis
+- Competitive analysis
+- Historical timelines beyond high-level milestones
 
 ---
 
@@ -37,95 +45,184 @@ Those topics belong in their own research pages.
 
 ## Protocol Summary
 
-## Problem Statement
+Extract:
 
-## Core Products
+- Protocol name
+- Protocol category
+- Primary purpose
+- One-sentence description
+
+---
+
+## Problem Being Solved
+
+Extract:
+
+- Primary problem
+- Intended outcome
+
+---
 
 ## Target Users
 
+Extract documented user groups.
+
+Record each separately.
+
+---
+
+## Core Features
+
+For each documented feature:
+
+| Feature | Purpose |
+|----------|---------|
+
+Only include documented features.
+
+---
+
+## Primary Components
+
+List the major protocol components at a high level.
+
+Examples:
+
+- Vaults
+- AMM
+- Lending markets
+- Bridge
+- Oracle
+- Router
+- SDK
+
+Do not explain implementation.
+
+---
+
 ## Supported Networks
 
-## Ecosystem Position
+For each documented network:
 
-## Protocol Maturity
+| Network | Status | Notes |
+|---------|--------|-------|
 
-Document the current maturity of the protocol if explicitly stated.
+Only include documented networks.
 
-Examples include:
+---
 
+## Protocol Lifecycle
+
+Extract documented information regarding:
+
+- Launch status
 - Mainnet
 - Testnet
 - Beta
-- Deprecated
+- Deprecated features
+- Planned releases
 
-If not documented, state:
+State **Not documented** if unavailable.
 
-Not documented.
+---
+
+## Notable Characteristics
+
+Extract documented characteristics that help distinguish the protocol.
+
+Examples:
+
+- Permissionless
+- Non-custodial
+- Modular
+- Cross-chain
+- Intent-based
+- Omnichain
+
+Only include documented characteristics.
 
 ---
 
 # Analyst Notes
 
-Provide analyst observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
-- Strategic positioning
-- Competitive advantages
-- Design philosophy
-- Adoption considerations
-- Ecosystem importance
+- Overall protocol complexity
+- Breadth of functionality
+- Intended market
+- Scope of protocol
+- Design focus
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
 
 ---
 
 # Risks
 
-Identify high-level risks related to the protocol, such as:
+Record only high-level protocol risks directly supported by the documented design.
 
-- Adoption risk
-- Ecosystem dependency
-- Regulatory considerations
-- User experience challenges
-- Operational limitations
+Examples:
 
-Do not include detailed security analysis.
+- Dependence on external infrastructure
+- Limited supported ecosystems
+- Centralized operational components
+- Documented operational constraints
 
----
-
-# Research Takeaways
-
-Summarize:
-
-- Why the protocol exists
-- What it offers
-- Why it matters
-- Key points for future research
+Do not perform security analysis.
 
 ---
 
-# Sources
+# Unknowns
 
-List every source used.
+Record important information that could not be determined.
+
+Examples:
+
+- Missing protocol purpose
+- Undefined target users
+- Missing supported networks
+- Missing lifecycle status
+- Missing feature descriptions
+
+Do not speculate.
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Primary protocol purpose
+- Primary target user
+- Primary protocol category
+- Most distinguishing documented characteristic
+- One fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+Only include high-impact claims that would materially affect understanding of the protocol.
+
+Examples:
+
+- Supported networks
+- Mainnet status
+- Permissionless operation
+- Cross-chain support
+- Non-custodial design
+- Primary protocol functionality
+
+Do not include descriptive summaries or marketing statements.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include protocol characteristics or status changes that would provide meaningful ongoing monitoring.

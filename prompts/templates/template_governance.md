@@ -1,146 +1,263 @@
 # Governance
 
 ## Purpose
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Document how the protocol is governed, including governance structure, voting mechanisms, administrative controls, proposal lifecycle, and emergency authorities.
+Extract and classify documented information describing how the protocol is governed.
 
-Do not discuss token economics except where the governance token is required to explain governance.
+Focus on governance structure, decision-making authority, permissions, upgrade authority, and governance processes.
+
+Do not document tokenomics, protocol architecture, or security analysis unless required to understand governance.
 
 ---
 
-## Key Questions
+## Scope
+> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
 
-Answer the following using only the supplied sources.
+Extract only documented information that answers the following questions:
 
 - Who governs the protocol?
-- Is governance on-chain, off-chain, or hybrid?
-- What governance framework is used?
-- How are proposals created?
-- Who can submit proposals?
-- How are proposals approved?
-- What voting mechanisms exist?
-- What are the quorum and approval requirements?
-- Are there timelocks?
-- Are there emergency powers?
-- What multisigs exist?
-- What administrative permissions remain?
+- How are decisions made?
+- Who can propose changes?
+- Who can vote?
+- What permissions exist?
+- What can governance modify?
+- What administrative roles exist?
+- How are upgrades approved?
+- What emergency powers exist?
+- What governance limitations are documented?
 
-Do not discuss:
+Do not include:
 
+- Token price
 - Token distribution
-- Market performance
-- Security analysis
+- Emissions
 - Revenue model
-- General protocol architecture beyond governance components
+- Protocol architecture
+- Market analysis
 
 ---
 
 # Facts
 
-## Governance Overview
-
 ## Governance Model
+
+Extract:
+
+- Governance type
+- Decision-making model
+- Governing entities
+
+---
 
 ## Governance Participants
 
-## Proposal Lifecycle
+For each documented participant:
 
-## Voting Mechanism
+| Participant | Role | Authority |
+|-------------|------|-----------|
 
-## Proposal Requirements
+Examples include:
 
-## Quorum Requirements
+- Token holders
+- DAO
+- Foundation
+- Multisig
+- Council
+- Core team
 
-## Execution Process
+Only include documented participants.
 
-## Timelock Mechanisms
+---
 
-## Emergency Controls
+## Proposal Process
+
+Extract the documented governance process.
+
+Record each stage separately.
+
+Example:
+
+| Stage | Description |
+|-------|-------------|
+
+State **Not documented** if unavailable.
+
+---
+
+## Voting
+
+Extract:
+
+- Voting mechanism
+- Voting eligibility
+- Voting requirements
+- Voting duration
+- Quorum
+- Approval thresholds
+
+Only include documented information.
+
+---
+
+## Governance Permissions
+
+For each documented permission:
+
+| Permission | Controlled By | Notes |
+|------------|---------------|-------|
+
+Examples:
+
+- Upgrade contracts
+- Modify protocol parameters
+- Treasury management
+- Fee changes
+- Whitelists
+- Blacklists
+- Oracle configuration
+- Emergency controls
+
+---
 
 ## Administrative Roles
 
+For each documented administrative role:
+
+| Role | Responsibilities | Restrictions |
+|------|------------------|--------------|
+
+Only include documented roles.
+
+---
+
 ## Upgrade Authority
+
+Extract:
+
+- Who can authorize upgrades
+- Upgrade process
+- Approval requirements
+- Emergency upgrade process
+- Immutable components
+
+---
+
+## Emergency Controls
+
+Extract documented emergency mechanisms.
+
+Examples include:
+
+- Pause functions
+- Emergency shutdown
+- Guardian roles
+- Circuit breakers
+
+Only include documented mechanisms.
+
+---
+
+## Governance Constraints
+
+Extract documented governance limitations.
+
+Examples:
+
+- Timelocks
+- Permission restrictions
+- Immutable parameters
+- Limited authority
+- Governance exclusions
 
 ---
 
 # Analyst Notes
 
-Discuss observations supported by the documented facts.
+Record concise observations derived from documented facts.
 
-Possible topics include:
+Examples include:
 
 - Degree of decentralization
-- Governance maturity
+- Distribution of authority
+- Governance complexity
 - Administrative concentration
-- Community participation model
-- Upgrade philosophy
-- Governance tradeoffs
+- Upgrade strategy
+- Separation of responsibilities
 
-Clearly distinguish inference from documented facts.
+Do not speculate.
 
 ---
 
 # Risks
 
-Identify governance-related risks such as:
+Record governance-related risks supported by the documented governance model.
 
-- Centralized control
-- Low voter participation
-- Multisig dependency
-- Emergency authority abuse
-- Governance capture
+Examples:
+
+- Concentrated authority
+- Broad administrative permissions
+- Emergency powers
 - Upgrade centralization
+- Weak governance constraints
+- Reliance on multisig
+- Governance bottlenecks
 
-Do not perform a technical security assessment.
+Do not speculate.
 
----
-
-# Research Takeaways
-
-Summarize:
-
-- Who controls the protocol
-- How governance functions
-- Major administrative powers
-- Key governance observations
+Do not perform a governance quality assessment.
 
 ---
 
-# Sources
+# Unknowns
 
-List every source used.
+Record important governance information that could not be determined.
+
+Examples:
+
+- Missing voting requirements
+- Missing proposal process
+- Missing governance permissions
+- Undefined upgrade authority
+- Undocumented emergency controls
 
 ---
 
-# Verification
+# Key Takeaways
 
-## On-Chain Verification
+- Governance model
+- Primary governing authority
+- Highest-impact governance permission
+- Largest governance risk
+- One governance fact an analyst should remember
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
-| Governance contract | Contract inspection | |
-| Timelock delay | Timelock contract | |
-| Proposal threshold | Governance contract | |
-| Quorum | Governance contract | |
-| Voting delay | Governance contract | |
-| Voting period | Governance contract | |
-| Multisig owners | Safe contract | |
-| Upgrade authority | Proxy admin | |
+---
 
-## Off-Chain Verification
+# Verification Opportunities
 
-| Claim | Verification Method | Status |
-|--------|---------------------|--------|
+Only include governance claims that would materially affect protocol trust or authority.
+
+Examples:
+
+- Upgrade authority
+- Contract ownership
+- Timelock configuration
+- Administrative permissions
+- Emergency pause authority
+- Governance execution model
+- Treasury control
+- Permission boundaries
+
+Do not include routine descriptions or governance workflow summaries.
+
+| High-Impact Claim | Why Verify? | Verification Method |
+|-------------------|-------------|---------------------|
 
 ---
 
 # Automation Opportunities
 
-| Check | Automatable | Python Approach |
-|--------|------------|-----------------|
-| Timelock delay | Yes | Timelock contract |
-| Proposal threshold | Yes | Governance contract |
-| Quorum | Yes | Governance contract |
-| Voting period | Yes | Governance contract |
-| Multisig owners | Yes | Safe API / contract |
-| Proxy admin | Yes | EIP-1967 inspection |
+| Check | Why It Matters | Automatable | Suggested Data Source |
+|--------|----------------|-------------|-----------------------|
+
+Only include governance changes or permissions that would provide meaningful ongoing monitoring.
