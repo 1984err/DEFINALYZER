@@ -36,9 +36,29 @@ python -m blockchain_collector.menu
 
 The menu currently guides contract snapshots, ERC-20 token snapshots,
 ERC-1967 proxy-slot checks, chunked ERC-20 transfer history, and readable
-standard contract calls. It saves the generated job under `jobs/` and the
-result under `evidence/`. Neither file is overwritten if the same job name is
-used again.
+standard contract calls. It can also collect a raw transaction and receipt
+from one transaction hash. The second menu workflow imports structured
+verification requests from a Markdown or JSON file, runs the supported rows,
+and saves ambiguous or unsupported rows in an import report for manual review.
+It saves generated jobs under `jobs/` and results under `evidence/`. Generated
+job, evidence, report, and summary files are not overwritten if the same job
+name is used again.
+
+For guided runs, the evidence folder contains both the authoritative raw JSON
+and a shorter Markdown summary intended for human reading. The summary reports
+collected values and completeness only; it does not verify the research claim.
+
+## Machine-readable capabilities
+
+Agents and external interfaces can inspect the current scanner contract with:
+
+```powershell
+python -m blockchain_collector.capabilities
+```
+
+The JSON output lists supported chains, operations, required and optional
+parameters, standard functions, schema versions, result statuses, and launch
+commands.
 
 ## Job structure
 
@@ -158,3 +178,7 @@ context, registry provenance, mechanical decoding, and collection errors.
 Mechanical decoding is not verification. A nonzero admin slot, a transfer to
 an address, or a returned supply value requires later analysis in the context
 of the specific documented claim.
+
+See `MVP_STATUS.md` for the verified first-version boundary and deferred scope.
+See `VERIFICATION_IMPORT.md` for the strict request format that connects
+research output to collector jobs.

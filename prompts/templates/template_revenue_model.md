@@ -1,255 +1,59 @@
 # Revenue Model
 
-## Purpose
-> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
-
-Extract and classify documented information describing how the protocol generates, distributes, and manages revenue.
-
-Focus on documented revenue sources, fee mechanisms, value flows, treasury allocation, and economic participants.
-
-Do not analyze token price, token valuation, market performance, or protocol financial health.
-
----
-
-## Scope
-> TEMPLATE INSTRUCTION ONLY — DO NOT INCLUDE THIS SECTION IN THE OUTPUT.
-
-Extract only documented information that answers the following questions:
-
-- How does the protocol generate revenue?
-- What fees exist?
-- Who pays those fees?
-- Who receives protocol revenue?
-- How is revenue distributed?
-- What treasury mechanisms exist?
-- What value flows occur within the protocol?
-- What revenue-related constraints or assumptions are documented?
-
-Do not include:
-
-- Token price
-- Token distribution
-- Emissions (unless directly tied to revenue distribution)
-- TVL
-- Market capitalization
-- Historical revenue statistics
-- Independent financial analysis
-
----
+> TEMPLATE INSTRUCTIONS — DO NOT INCLUDE IN OUTPUT.
+>
+> Extract how fees and other value enter, move through, and leave the protocol.
+> Do not infer profitability, sustainability, or valuation.
 
 # Facts
 
-## Revenue Overview
+## Revenue Model
 
-Extract:
+| Field | Value |
+|---|---|
+| Primary revenue mechanism | |
+| Primary payer | |
+| Primary recipient | |
+| Token-holder value mechanism | |
 
-- Primary revenue model
-- Primary revenue sources
-- Primary revenue recipients
+## Fees and Revenue Sources
 
----
+| Fee or Revenue Source | Payer | Trigger | Rate or Formula | Configured By |
+|---|---|---|---|---|
 
-## Revenue Sources
+Merge the former revenue-source and fee tables: do not list the same charge
+twice.
 
-For each documented revenue source:
+## Distribution
 
-| Revenue Source | Description | Paid By |
-|----------------|-------------|----------|
+| Source | Recipient | Share or Formula | Condition | Destination |
+|---|---|---:|---|---|
 
-Examples include:
-
-- Trading fees
-- Borrowing interest
-- Liquidation fees
-- Bridge fees
-- Vault fees
-- Subscription fees
-- Performance fees
-- Minting fees
-
-Only include documented revenue sources.
-
----
-
-## Fee Structure
-
-For each documented fee:
-
-| Fee | Purpose | Payer | Recipient |
-|-----|---------|-------|-----------|
-
-Only include documented fees.
-
-State **Not documented** if unavailable.
-
----
-
-## Revenue Distribution
-
-For each documented recipient:
-
-| Recipient | Revenue Source | Allocation |
-|-----------|----------------|------------|
-
-Examples include:
-
-- Treasury
-- DAO
-- Stakers
-- Liquidity providers
-- Validators
-- Operators
-- Burn mechanism
-
-Only include documented allocations.
-
----
+Include burns only as a documented destination or supply effect.
 
 ## Treasury
 
-Extract documented information regarding:
+| Field | Value |
+|---|---|
+| Funding sources | |
+| Authorized uses | |
+| Control authority | |
+| Distribution constraints | |
 
-- Treasury purpose
-- Treasury funding
-- Treasury usage
-- Treasury management
+## Material Value Flow
 
-State **Not documented** if unavailable.
+| Flow | From | To | Economic Purpose |
+|---|---|---|---|
 
----
+Include only flows not already fully represented in the fee and distribution
+tables.
 
-## Value Flow
+# Documented Risks & Constraints
 
-Extract the documented movement of value through the protocol.
+| Risk or Constraint | Revenue Exposure | Documented Basis |
+|---|---|---|
 
-Separate:
+# Material Unknowns
 
-### User Payments
-
-### Protocol Revenue
-
-### Revenue Distribution
-
-Record only documented flows.
-
----
-
-## Incentive Alignment
-
-Extract documented mechanisms that align participant incentives with protocol revenue.
-
-Examples include:
-
-- Revenue sharing
-- Fee rebates
-- Staking rewards funded by fees
-- Treasury incentives
-- Performance incentives
-
-Only include documented mechanisms.
-
----
-
-## Revenue Constraints
-
-Extract documented limitations or operational requirements.
-
-Examples:
-
-- Fee caps
-- Revenue restrictions
-- Treasury limitations
-- Distribution conditions
-- Eligibility requirements
-
----
-
-# Analyst Notes
-
-Record concise observations derived from documented facts.
-
-Examples include:
-
-- Revenue diversification
-- Dependence on a single revenue source
-- Distribution complexity
-- Treasury reliance
-- Incentive alignment
-- Sustainability considerations based solely on documented design
-
-Do not speculate.
-
-Do not estimate protocol profitability.
-
----
-
-# Risks
-
-Record only revenue-related risks supported by the documented design.
-
-Examples:
-
-- Single revenue source
-- Dependence on user activity
-- Heavy reliance on incentives
-- Treasury concentration
-- Limited revenue diversification
-- External dependency for revenue generation
-
-Do not speculate.
-
-Do not perform financial analysis.
-
----
-
-# Unknowns
-
-Record important revenue information that could not be determined.
-
-Examples:
-
-- Missing fee schedule
-- Undefined revenue recipients
-- Missing treasury documentation
-- Missing allocation percentages
-- Missing value flow documentation
-
----
-
-# Key Takeaways
-
-- Primary revenue source
-- Primary revenue recipient
-- Largest documented value flow
-- Largest documented revenue dependency
-- One revenue fact an analyst should remember
-
----
-
-# Verification Opportunities
-
-Only include revenue claims that would materially affect protocol evaluation.
-
-Examples:
-
-- Fee recipients
-- Treasury ownership
-- Revenue distribution
-- Burn mechanisms
-- Revenue sharing
-- Fee configuration
-- Treasury permissions
-
-Do not include routine fee descriptions or explanatory diagrams.
-
-| High-Impact Claim | Why Verify? | Verification Method |
-|-------------------|-------------|---------------------|
-
----
-
-# Automation Opportunities
-
-| Check | Why It Matters | Automatable | Suggested Data Source |
-|--------|----------------|-------------|-----------------------|
-
-Only include revenue changes or financial configurations that would provide meaningful ongoing monitoring.
+| Missing or Conflicting Information | Why It Matters |
+|---|---|

@@ -2,9 +2,10 @@ import unittest
 
 from blockchain_collector.executor import (
     _evidence_is_partial,
+    _requests_require_snapshot,
     execute_collection_job,
 )
-from blockchain_collector.jobs import CollectionJob
+from blockchain_collector.jobs import CollectionJob, CollectionRequest
 from blockchain_collector.rpc import RpcEvidence, SUPPORTED_CHAINS
 
 
@@ -82,6 +83,32 @@ def job_document():
 
 
 class ExecutorTests(unittest.TestCase):
+    def test_snapshot_requirement_depends_on_request_parameters(self):
+        transaction = CollectionRequest(
+            name="transaction",
+            chain="ethereum",
+            operation="get_transaction",
+            parameters={"transaction_hash": "0x" + ("ab" * 32)},
+        )
+        historical_code = CollectionRequest(
+            name="code",
+            chain="ethereum",
+            operation="get_code",
+            parameters={"block": 100},
+            target=None,
+        )
+        latest_code = CollectionRequest(
+            name="latest-code",
+            chain="ethereum",
+            operation="get_code",
+            parameters={},
+            target=None,
+        )
+
+        self.assertFalse(_requests_require_snapshot([transaction]))
+        self.assertFalse(_requests_require_snapshot([historical_code]))
+        self.assertTrue(_requests_require_snapshot([latest_code]))
+
     def test_detects_incomplete_chunked_evidence(self):
         self.assertTrue(
             _evidence_is_partial(
@@ -151,6 +178,34 @@ class ExecutorTests(unittest.TestCase):
                 record.collection_error["stage"] == "chain_setup"
                 for record in bundle.records
             )
+        )
+
+    def test_transaction_only_job_does_not_fetch_latest_block(self):
+        document = {
+            "schema_version": 1,
+            "name": "transaction-check",
+            "requests": [
+                {
+                    "name": "transaction",
+                    "chain": "ethereum",
+                    "operation": "get_transaction",
+                    "parameters": {
+                        "transaction_hash": "0x" + ("ab" * 32)
+                    },
+                }
+            ],
+        }
+        client = FakeClient("ethereum")
+        bundle = execute_collection_job(
+            CollectionJob.from_mapping(document),
+            client_factory=lambda chain: client,
+        )
+
+        self.assertEqual(bundle.records[0].status, "collected")
+        self.assertEqual(bundle.chain_snapshots, {})
+        self.assertNotIn(
+            "eth_getBlockByNumber",
+            [method for method, _ in client.calls],
         )
 
     def test_rpc_error_remains_collected_raw_evidence(self):

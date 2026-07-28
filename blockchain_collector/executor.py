@@ -112,23 +112,30 @@ def _prepare_chains(
             client = factory(chain)
             client.validate_chain_id()
             collector = RawEvmCollector(client)
-            snapshot = collector.get_block("latest")
-            block_result = snapshot.rpc.result
+            chain_requests = [
+                request for request in job.requests if request.chain == chain
+            ]
 
-            if (
-                snapshot.rpc.error is not None
-                or not isinstance(block_result, dict)
-                or not isinstance(block_result.get("number"), str)
-            ):
-                raise RuntimeError(
-                    "Latest block snapshot did not return a block number."
+            if _requests_require_snapshot(chain_requests):
+                snapshot = collector.get_block("latest")
+                block_result = snapshot.rpc.result
+
+                if (
+                    snapshot.rpc.error is not None
+                    or not isinstance(block_result, dict)
+                    or not isinstance(block_result.get("number"), str)
+                ):
+                    raise RuntimeError(
+                        "Latest block snapshot did not return a block number."
+                    )
+
+                runtimes[chain] = ChainRuntime(
+                    collector=collector,
+                    pinned_block=block_result["number"],
+                    snapshot_evidence=snapshot.to_dict(),
                 )
-
-            runtimes[chain] = ChainRuntime(
-                collector=collector,
-                pinned_block=block_result["number"],
-                snapshot_evidence=snapshot.to_dict(),
-            )
+            else:
+                runtimes[chain] = ChainRuntime(collector=collector)
         except Exception as exc:
             runtimes[chain] = ChainRuntime(
                 collector=None,
@@ -139,6 +146,43 @@ def _prepare_chains(
             )
 
     return runtimes
+
+
+def _requests_require_snapshot(
+    requests: list[CollectionRequest],
+) -> bool:
+    block_operations = {
+        "contract_snapshot",
+        "eip1967_slots",
+        "erc20_snapshot",
+        "get_balance",
+        "get_code",
+        "get_storage_at",
+        "raw_call",
+        "standard_call",
+    }
+
+    for request in requests:
+        parameters = request.parameters
+
+        if request.operation in block_operations:
+            if parameters.get("block", "latest") == "latest":
+                return True
+        elif request.operation == "get_block":
+            if parameters.get("block") == "latest":
+                return True
+        elif request.operation in {
+            "erc20_transfers",
+            "get_logs",
+            "get_logs_chunked",
+        }:
+            if (
+                parameters.get("from_block") == "latest"
+                or parameters.get("to_block") == "latest"
+            ):
+                return True
+
+    return False
 
 
 def _execute_request(

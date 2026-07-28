@@ -41,6 +41,7 @@ class GuidedMenuTests(unittest.TestCase):
             [
                 "1",
                 "1",
+                "1",
                 ADDRESS,
                 "Core Contract",
                 "controller",
@@ -62,9 +63,13 @@ class GuidedMenuTests(unittest.TestCase):
             )
             document = json.loads(job_path.read_text(encoding="utf-8"))
             evidence_exists = evidence_path.exists()
+            summary_exists = (
+                Path(directory) / "evidence" / "my-contract-check.md"
+            ).exists()
 
         self.assertEqual(exit_code, 0)
         self.assertTrue(evidence_exists)
+        self.assertTrue(summary_exists)
         self.assertEqual(document["requests"][0]["operation"], "contract_snapshot")
         self.assertTrue(
             document["requests"][0]["parameters"]["include_owner_call"]
@@ -76,6 +81,7 @@ class GuidedMenuTests(unittest.TestCase):
         treasury = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
         prompts = answers(
             [
+                "1",
                 "3",
                 "2",
                 ADDRESS,
@@ -113,6 +119,7 @@ class GuidedMenuTests(unittest.TestCase):
         prompts = answers(
             [
                 "1",
+                "1",
                 "3",
                 ADDRESS,
                 "Proxy",
@@ -144,6 +151,7 @@ class GuidedMenuTests(unittest.TestCase):
         burn_address = "0x000000000000000000000000000000000000dead"
         prompts = answers(
             [
+                "1",
                 "1",
                 "4",
                 ADDRESS,
@@ -196,6 +204,7 @@ class GuidedMenuTests(unittest.TestCase):
         prompts = answers(
             [
                 "1",
+                "1",
                 "5",
                 ADDRESS,
                 "Token",
@@ -223,6 +232,142 @@ class GuidedMenuTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(parameters["function"], "balanceOf")
         self.assertEqual(parameters["arguments"], [account])
+
+    @patch("blockchain_collector.menu.execute_collection_job")
+    def test_builds_transaction_and_receipt_requests(self, execute_job):
+        execute_job.side_effect = lambda job, **kwargs: EvidenceBundle(
+            job_name=job.name,
+            started_at="2026-07-28T00:00:00+00:00",
+            completed_at="2026-07-28T00:00:01+00:00",
+            records=[
+                EvidenceRecord(
+                    request_name=request.name,
+                    operation=request.operation,
+                    chain=request.chain,
+                    status="collected",
+                    evidence={"rpc": {"result": {}}},
+                )
+                for request in job.requests
+            ],
+        )
+        transaction_hash = "0x" + ("ab" * 32)
+        prompts = answers(
+            [
+                "1",
+                "2",
+                "6",
+                transaction_hash,
+                "deployment-docs.md",
+                "Deployment Transaction",
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            exit_code = run_guided_menu(
+                input_fn=prompts,
+                print_fn=lambda message: None,
+                working_directory=directory,
+            )
+            document = json.loads(
+                (
+                    Path(directory) / "jobs" / "deployment-transaction.json"
+                ).read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [request["operation"] for request in document["requests"]],
+            ["get_transaction", "get_transaction_receipt"],
+        )
+        self.assertTrue(
+            all(
+                request["parameters"]["transaction_hash"] == transaction_hash
+                for request in document["requests"]
+            )
+        )
+        self.assertEqual(
+            document["metadata"]["transaction_source"],
+            "deployment-docs.md",
+        )
+
+    @patch("blockchain_collector.menu.execute_collection_job")
+    def test_rejects_malformed_transaction_hash_before_writing(self, execute_job):
+        prompts = answers(
+            [
+                "1",
+                "1",
+                "6",
+                "0x1234",
+            ]
+        )
+        messages = []
+
+        with tempfile.TemporaryDirectory() as directory:
+            exit_code = run_guided_menu(
+                input_fn=prompts,
+                print_fn=messages.append,
+                working_directory=directory,
+            )
+            jobs_exist = (Path(directory) / "jobs").exists()
+
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(jobs_exist)
+        execute_job.assert_not_called()
+        self.assertTrue(any("64 hexadecimal" in item for item in messages))
+
+    @patch("blockchain_collector.menu.execute_collection_job")
+    def test_imports_and_runs_structured_verification_file(self, execute_job):
+        execute_job.side_effect = lambda job, **kwargs: successful_bundle(job)
+        request_document = {
+            "schema_version": 1,
+            "name": "source-name",
+            "requests": [
+                {
+                    "id": "proxy-slots",
+                    "claim": "A material proxy-related claim.",
+                    "why_verify": "It could change the trust assessment.",
+                    "chain": "ethereum",
+                    "operation": "eip1967_slots",
+                    "parameters": {"block": "latest"},
+                    "target": {
+                        "target_name": "Core Proxy",
+                        "role": "proxy",
+                        "address": ADDRESS,
+                        "chain": "Ethereum",
+                        "chain_id": 1,
+                        "source": "registry.md",
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_path = root / "research.md"
+            source_path.write_text(
+                "# Verification\n\n```definalyzer-verification\n"
+                + json.dumps(request_document)
+                + "\n```\n",
+                encoding="utf-8",
+            )
+            exit_code = run_guided_menu(
+                input_fn=answers(["2", "research.md", "Imported Check"]),
+                print_fn=lambda message: None,
+                working_directory=root,
+            )
+
+            job_exists = (root / "jobs" / "imported-check.json").exists()
+            report_exists = (
+                root / "evidence" / "imported-check-import-report.json"
+            ).exists()
+            evidence_exists = (
+                root / "evidence" / "imported-check.json"
+            ).exists()
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(job_exists)
+        self.assertTrue(report_exists)
+        self.assertTrue(evidence_exists)
 
 
 if __name__ == "__main__":

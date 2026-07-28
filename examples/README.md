@@ -24,3 +24,8 @@ python -m blockchain_collector `
 
 The output path must not already exist. The collector will not replace prior
 evidence.
+
+`verification_requests_example.md` demonstrates the strict fenced JSON block
+used to translate research verification requests into collection jobs. See
+`blockchain_collector/VERIFICATION_IMPORT.md` for the importer contract and
+commands.

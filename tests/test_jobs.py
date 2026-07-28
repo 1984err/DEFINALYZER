@@ -77,6 +77,24 @@ class CollectionJobTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "transaction_hash"):
             CollectionJob.from_mapping(document)
 
+    def test_rejects_registry_target_for_different_chain(self):
+        document = valid_job()
+        document["requests"][0]["target"]["chain"] = "Base"
+        document["requests"][0]["target"]["chain_id"] = 8453
+
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            CollectionJob.from_mapping(document)
+
+    def test_accepts_documented_chain_alias(self):
+        document = valid_job()
+        document["requests"][0]["chain"] = "arbitrum"
+        document["requests"][0]["target"]["chain"] = "Arbitrum One"
+        document["requests"][0]["target"]["chain_id"] = 42161
+
+        job = CollectionJob.from_mapping(document)
+
+        self.assertEqual(job.requests[0].chain, "arbitrum")
+
 
 if __name__ == "__main__":
     unittest.main()

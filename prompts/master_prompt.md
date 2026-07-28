@@ -1,299 +1,102 @@
-# DeFi Research Master Prompt
+# DeFi Research Extraction Rules
 
 ## Objective
 
-Extract, classify, and organize information from the supplied documentation into the provided template.
+Convert the supplied documentation into a compact, factual reference page for
+investment research and later machine analysis.
 
-This is a structured information extraction task, **not** a report-writing task.
+This is data extraction, not report writing. Preserve decision-relevant facts;
+do not reproduce the documentation.
 
-The objective is to create a concise, evidence-based reference page for an Obsidian knowledge base that enables rapid understanding of the protocol.
-
-The objective is **reference, not explanation**.
-
----
-
-## Primary Rules
-
-These rules override all other instructions.
+## Source Rules
 
 - Use only the supplied documentation.
 - Do not use prior knowledge.
-- Do not hallucinate.
-- Do not guess.
-- Do not invent missing information.
-- Every factual statement must be directly supported by the supplied documentation.
-- If information is unavailable, state **"Not documented."**
-- If documentation is ambiguous, state **"Unable to determine."**
-- If a concept does not apply to the protocol, state **"Not applicable."**
-
----
-
-## Information Classification
-
-Your task is to classify documented information into the most appropriate section of the supplied template.
-
-Do not write a report.
-
-Do not teach.
-
-Do not explain concepts unless the template explicitly requires explanation.
-
-Do not expand beyond what is documented.
-
-Each documented fact should appear in the single most appropriate location.
-
-Avoid duplication unless absolutely necessary for context.
-
----
-
-## Extraction Priorities
-
-Prioritize information in the following order:
-
-1. Core protocol behavior
-2. Major protocol components
-3. System interactions
-4. Trust assumptions
-5. Critical operational details
-6. Important implementation details
-7. Minor implementation details
-
----
-
-## Research Standards
-
-- Prefer primary documentation.
-- Preserve documented terminology.
-- Keep facts objective.
-- Separate facts from analysis.
-- Be concise.
-- Avoid repetition.
-- Do not reconcile conflicting documentation.
-- Follow the supplied template exactly.
-
----
-
-## Atomic Information
-
-Every bullet, sentence, or table entry should communicate one primary fact.
-
-Prefer:
-
-- Bullet lists
-- Short declarative statements
-- Tables where provided
-
-Avoid:
-
-- Long paragraphs
-- Narrative transitions
-- Repeated explanations
-
-Maximum paragraph length: three sentences.
-
----
-
-## Facts
-
-The Facts section contains only documented information.
-
-Do not:
-
-- infer
-- speculate
-- interpret intent
-- explain undocumented reasoning
-- compare
-- evaluate
-- recommend
-
-Only record documented facts.
-
----
-
-## Analyst Notes
-
-This is the only section where analysis is permitted.
-
-Analyst Notes may:
-
-- identify relationships
-- identify architectural implications
-- identify tradeoffs
-- identify operational observations
-
-Analyst Notes may not:
-
-- speculate
-- predict
-- recommend
-- fill documentation gaps
-- present inference as fact
-
-Keep analysis brief.
-
----
-
-## Risks
-
-Document only risks supported by the supplied documentation or directly implied by the documented protocol design.
-
-Do not:
-
-- perform security analysis
-- speculate
-- duplicate risks from other research pages unless required for context
-
----
-
-## Unknowns
-
-Document important information that could not be determined from the supplied documentation.
-
-Examples include:
-
-- Missing implementation details
-- Missing protocol parameters
-- Incomplete documentation
-- Conflicting documentation
-- Undefined behavior
-
-Do not speculate.
-
----
-
-## Verification Opportunities
-
-Verification exists to reduce uncertainty, **not** to confirm documentation.
-
-Only identify verification opportunities for claims that materially affect:
-
-- Trust
-- Security
-- Protocol behavior
-- Economics
-- User decision-making
-
-Do not create a verification entry simply because a claim exists.
-
-Ask:
-
-> Would verifying this claim materially change how an analyst evaluates the protocol?
-
-Typically verify:
-
-- Token emissions
-- Burn mechanisms
-- Supply limits
-- Fee distribution
-- Treasury allocations
-- Governance permissions
-- Upgrade permissions
-- Contract ownership
-- Access control
-- Critical protocol configuration
-- Oracle configuration when protocol behavior depends on it
-- Collateral parameters
-- Liquidation parameters
-- Cross-chain validation
-
-Do not verify:
-
-- Contract names
-- Module names
-- User workflows
-- Architecture descriptions
-- Documentation examples
-- Lists of supported assets
-- Public addresses
-- ABI descriptions
-- Readily observable on-chain state with little analytical value
-
----
-
-## Automation Opportunities
-
-Identify information that could later be automatically:
-
-- collected
-- monitored
-- validated
-- compared
-
-using blockchain data, APIs, Python, or other automation.
-
-Do not write code.
-
----
-
-## Documentation Conflicts
-
-If documentation conflicts:
-
-- Record each documented claim.
-- Do not resolve the conflict.
-- Do not choose one claim.
-- Record the inconsistency under **Unknowns** if it materially affects understanding.
-
----
-
-## Scope Control
-
-Populate only the requested template.
-
-If information belongs in another research page:
-
-- include only the minimum context required
-- do not elaborate
-
----
-
-## Accessibility Standard
-
-Assume the reader understands DeFi terminology.
-
-Optimize for rapid information retrieval.
-
-Every section should answer one clear question.
-
-Use:
-
-- One fact per bullet.
-- One idea per sentence.
-- Consistent terminology.
-- Tables where appropriate.
-
-Avoid:
-
-- Narrative writing.
-- Educational explanations.
-- Marketing language.
-- Filler.
-- Redundant wording.
-
----
-
-## Writing Style
-
-- Technical
-- Objective
-- Neutral
-- Concise
-- Evidence-based
-- Information-dense
-- Professional
-
----
+- Do not infer, reconcile, estimate, or fill gaps.
+- Preserve documented terminology and material numbers exactly.
+- Record conflicting claims separately.
+- Use **Not documented** only for a material field requested by the template.
+- Use **Unable to determine** when supplied sources are ambiguous or conflict.
+- Use **Not applicable** only when the subject clearly does not apply.
+
+## Materiality Filter
+
+Include a fact only when it helps determine at least one of:
+
+- what the protocol does and who uses it
+- how value enters, moves through, or leaves the system
+- token supply, distribution, incentives, or dilution
+- governance, privileged authority, or upgrade control
+- user-fund, collateral, liquidation, liquidity, or solvency exposure
+- critical infrastructure, oracle, bridge, or protocol dependence
+- operational constraints, failure conditions, or documented mitigations
+- a meaningful competitive difference or documented limitation
+
+Exclude:
+
+- marketing language and unsupported superlatives
+- tutorials, interface instructions, and routine user workflows
+- exhaustive feature, asset, integration, or contract lists with no analytical
+  significance
+- examples that do not define actual protocol behavior
+- repeated background explanations
+- minor implementation details that do not affect behavior, trust, economics,
+  or risk
+- generic blockchain or DeFi explanations
+
+## Compression Rules
+
+- One fact per bullet or table row.
+- Prefer compact tables for repeated fields.
+- Use short declarative phrases; avoid narrative paragraphs.
+- Do not restate the same fact in summaries, takeaways, or commentary.
+- Combine fields only when doing so does not hide distinct facts.
+- Preserve essential qualifications, conditions, units, dates, and scope.
+- A page may be short. Do not add filler to populate a section.
+- Omit empty optional sections instead of producing long placeholder lists.
+
+## Output Classes
+
+Each page may contain only:
+
+1. **Facts** — directly documented, decision-relevant information.
+2. **Documented Risks & Constraints** — risks, limitations, trust requirements,
+   or failure conditions explicitly stated or mechanically inherent in the
+   documented design. State the supporting mechanism; do not speculate.
+3. **Material Unknowns** — missing or conflicting information whose absence
+   limits investment analysis.
+
+Do not produce:
+
+- analyst commentary
+- recommendations
+- conclusions
+- ratings or verdicts
+- repetitive key takeaways
+- verification opportunities
+- automation opportunities
+
+Verification is handled in a separate verification-planning workflow.
+
+## Cross-Page Deduplication
+
+- Place a fact in the single most specific page.
+- The overview may reference a subject at a high level but must not repeat its
+  mechanics.
+- Architecture owns component interaction and system flow.
+- Governance owns decision authority and governance processes.
+- Security owns defensive controls and security-critical trust.
+- Risk Assessment owns consolidated material exposure and failure scenarios.
+- Tokenomics owns token supply, allocation, emissions, utility, and restrictions.
+- Revenue Model owns fees, recipients, and value distribution.
+- Liquidity owns liquidity sources, utilization, incentives, and constraints.
+- Integrations & Dependencies owns required external systems and assets.
+- Competitive Analysis owns documented comparisons and differentiators.
 
 ## Output Requirements
 
-- Follow the supplied template exactly.
-- Treat every heading as a field to populate.
-- Do not add sections.
-- Do not remove sections.
-- Do not rename headings.
-- Preserve Markdown formatting.
-- Populate every section.
-- If information is unavailable, state **"Not documented."**
-- If information is ambiguous, state **"Unable to determine."**
-- If the section does not apply, state **"Not applicable."**
+- Follow the supplied template headings and field structure.
+- Do not output template instructions.
+- Do not add introductory or closing prose.
+- Do not cite a source unless the template requests source provenance.
+- Return Markdown optimized for Obsidian and machine parsing.

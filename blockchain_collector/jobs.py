@@ -43,6 +43,11 @@ TARGET_OPERATIONS = {
     "raw_call",
     "standard_call",
 }
+CHAIN_ALIASES = {
+    "ethereum": {"ethereum", "ethereum mainnet", "mainnet"},
+    "arbitrum": {"arbitrum", "arbitrum one"},
+    "base": {"base", "base mainnet"},
+}
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,7 @@ class CollectionRequest:
                 raise ValueError("'target' must be an object or null.")
 
             target = RegistryTarget.from_mapping(target_value)
+            _validate_target_chain(target, chain)
 
         if operation in TARGET_OPERATIONS and target is None:
             raise ValueError(f"Operation {operation!r} requires a registry target.")
@@ -197,3 +203,24 @@ def _required_text(value: Mapping[str, Any], key: str) -> str:
         raise ValueError(f"{key!r} must be non-empty text.")
 
     return item.strip()
+
+
+def _validate_target_chain(target: RegistryTarget, request_chain: str) -> None:
+    chain_configuration = SUPPORTED_CHAINS[request_chain]
+
+    if (
+        target.chain_id is not None
+        and target.chain_id != chain_configuration.chain_id
+    ):
+        raise ValueError(
+            f"Registry target chain_id {target.chain_id} does not match "
+            f"{request_chain} chain ID {chain_configuration.chain_id}."
+        )
+
+    documented_chain = target.chain.strip().lower()
+
+    if documented_chain not in CHAIN_ALIASES[request_chain]:
+        raise ValueError(
+            f"Registry target chain {target.chain!r} does not match request "
+            f"chain {request_chain!r}."
+        )

@@ -12,6 +12,13 @@ from .envfile import load_environment_file
 from .evidence import write_evidence_bundle
 from .executor import ClientFactory, execute_collection_job
 from .jobs import CollectionJob
+from .request_validation import TRANSACTION_HASH_PATTERN
+from .summary import write_evidence_summary
+from .verification_import import (
+    import_verification_requests,
+    load_verification_requests,
+    write_json_new,
+)
 
 
 InputFunction = Callable[[str], str]
@@ -28,6 +35,7 @@ CHECK_CHOICES = {
     "3": "eip1967_slots",
     "4": "erc20_transfers",
     "5": "standard_call",
+    "6": "transaction_bundle",
 }
 STANDARD_CALL_CHOICES = {
     "1": ("totalSupply", 0),
@@ -37,6 +45,10 @@ STANDARD_CALL_CHOICES = {
     "5": ("name", 0),
     "6": ("symbol", 0),
     "7": ("decimals", 0),
+}
+WORKFLOW_CHOICES = {
+    "1": "single_check",
+    "2": "verification_import",
 }
 
 
@@ -57,6 +69,22 @@ def run_guided_menu(
         print_fn("DEFINALYZER Blockchain Evidence Collector")
         print_fn("This collects evidence only; it does not verify claims.")
         print_fn("")
+        print_fn("Select workflow:")
+        print_fn("  1. Create one guided evidence check")
+        print_fn("  2. Import structured verification requests")
+        workflow = WORKFLOW_CHOICES[
+            _choice(input_fn, "Workflow [1-2]: ", WORKFLOW_CHOICES)
+        ]
+
+        if workflow == "verification_import":
+            return _run_import_workflow(
+                root=root,
+                input_fn=input_fn,
+                print_fn=print_fn,
+                client_factory=client_factory,
+            )
+
+        print_fn("")
         print_fn("Select chain:")
         print_fn("  1. Ethereum")
         print_fn("  2. Arbitrum One")
@@ -72,25 +100,51 @@ def run_guided_menu(
         print_fn("  3. ERC-1967 proxy slots")
         print_fn("  4. ERC-20 transfer history")
         print_fn("  5. Standard contract read")
+        print_fn("  6. Transaction and receipt")
         operation = CHECK_CHOICES[
-            _choice(input_fn, "Check [1-5]: ", CHECK_CHOICES)
+            _choice(input_fn, "Check [1-6]: ", CHECK_CHOICES)
         ]
 
-        address = _required(input_fn, "Contract address: ")
-        target_name = _required(input_fn, "Documented component name: ")
-        role = input_fn("Documented role (optional): ").strip() or None
-        source = _required(input_fn, "Registry source URL or document: ")
-        job_name = _job_name(
-            _required(input_fn, "Short job name: ")
-        )
-        parameters = _operation_parameters(operation, input_fn, print_fn)
-        job_document = {
-            "schema_version": 1,
-            "name": job_name,
-            "metadata": {
+        if operation == "transaction_bundle":
+            transaction_hash = _required(input_fn, "Transaction hash: ")
+
+            if not TRANSACTION_HASH_PATTERN.fullmatch(transaction_hash):
+                raise ValueError(
+                    "Transaction hash must be 0x followed by 64 hexadecimal "
+                    "characters."
+                )
+
+            source = _required(
+                input_fn,
+                "Source URL or document containing this transaction: ",
+            )
+            job_name = _job_name(_required(input_fn, "Short job name: "))
+            requests = [
+                {
+                    "name": f"{job_name}-transaction",
+                    "chain": chain_key,
+                    "operation": "get_transaction",
+                    "parameters": {"transaction_hash": transaction_hash},
+                },
+                {
+                    "name": f"{job_name}-receipt",
+                    "chain": chain_key,
+                    "operation": "get_transaction_receipt",
+                    "parameters": {"transaction_hash": transaction_hash},
+                },
+            ]
+            metadata = {
                 "created_by": "guided-terminal-menu",
-            },
-            "requests": [
+                "transaction_source": source,
+            }
+        else:
+            address = _required(input_fn, "Contract address: ")
+            target_name = _required(input_fn, "Documented component name: ")
+            role = input_fn("Documented role (optional): ").strip() or None
+            source = _required(input_fn, "Registry source URL or document: ")
+            job_name = _job_name(_required(input_fn, "Short job name: "))
+            parameters = _operation_parameters(operation, input_fn, print_fn)
+            requests = [
                 {
                     "name": f"{job_name}-request",
                     "chain": chain_key,
@@ -105,12 +159,23 @@ def run_guided_menu(
                         "source": source,
                     },
                 }
-            ],
+            ]
+            metadata = {
+                "created_by": "guided-terminal-menu",
+            }
+
+        job_document = {
+            "schema_version": 1,
+            "name": job_name,
+            "metadata": metadata,
+            "requests": requests,
         }
         job = CollectionJob.from_mapping(job_document)
         job_path = root / "jobs" / f"{job_name}.json"
         evidence_path = root / "evidence" / f"{job_name}.json"
+        summary_path = root / "evidence" / f"{job_name}.md"
 
+        _require_new_paths(job_path, evidence_path, summary_path)
         _write_job(job_document, job_path)
         bundle = execute_collection_job(
             job,
@@ -118,6 +183,7 @@ def run_guided_menu(
             client_factory=client_factory,
         )
         write_evidence_bundle(bundle, evidence_path)
+        write_evidence_summary(bundle, summary_path)
     except (EOFError, KeyboardInterrupt):
         print_fn("\nCancelled.")
         return EXIT_ERROR
@@ -131,9 +197,90 @@ def run_guided_menu(
     print_fn("")
     print_fn(f"Job saved:      {job_path}")
     print_fn(f"Evidence saved: {evidence_path}")
+    print_fn(f"Summary saved:  {summary_path}")
     print_fn(f"Collected: {collected}  Partial: {partial}  Failed: {failed}")
 
     return EXIT_SUCCESS if not partial and not failed else EXIT_PARTIAL_FAILURE
+
+
+def _run_import_workflow(
+    *,
+    root: Path,
+    input_fn: InputFunction,
+    print_fn: PrintFunction,
+    client_factory: ClientFactory | None,
+) -> int:
+    source_value = _required(
+        input_fn,
+        "Markdown or JSON verification-request file: ",
+    )
+    source_path = Path(source_value)
+
+    if not source_path.is_absolute():
+        source_path = root / source_path
+
+    source_path = source_path.resolve()
+    output_name = _job_name(_required(input_fn, "Short output name: "))
+    document = load_verification_requests(source_path)
+    result = import_verification_requests(
+        document,
+        source=str(source_path),
+        job_name=output_name,
+    )
+    report_path = root / "evidence" / f"{output_name}-import-report.json"
+
+    if result.job_document is None:
+        _require_new_paths(report_path)
+        write_json_new(result.report, report_path)
+        print_fn("")
+        print_fn("No supported requests were run.")
+        print_fn(f"Import report: {report_path}")
+        print_fn(
+            f"Manual review: {result.report['manual_review_count']}"
+        )
+        return EXIT_PARTIAL_FAILURE
+
+    job_path = root / "jobs" / f"{output_name}.json"
+    evidence_path = root / "evidence" / f"{output_name}.json"
+    summary_path = root / "evidence" / f"{output_name}.md"
+    _require_new_paths(
+        job_path,
+        evidence_path,
+        summary_path,
+        report_path,
+    )
+    job = result.job
+
+    if job is None:
+        raise RuntimeError("Verification import did not create a valid job.")
+
+    write_json_new(result.job_document, job_path)
+    write_json_new(result.report, report_path)
+    bundle = execute_collection_job(
+        job,
+        job_source=str(job_path),
+        client_factory=client_factory,
+    )
+    write_evidence_bundle(bundle, evidence_path)
+    write_evidence_summary(bundle, summary_path)
+
+    collected = sum(record.status == "collected" for record in bundle.records)
+    partial = sum(record.status == "partial" for record in bundle.records)
+    failed = sum(record.status == "failed" for record in bundle.records)
+    manual = result.report["manual_review_count"]
+    print_fn("")
+    print_fn(f"Job saved:      {job_path}")
+    print_fn(f"Import report:  {report_path}")
+    print_fn(f"Evidence saved: {evidence_path}")
+    print_fn(f"Summary saved:  {summary_path}")
+    print_fn(
+        f"Collected: {collected}  Partial: {partial}  Failed: {failed}  "
+        f"Manual review: {manual}"
+    )
+
+    if partial or failed or manual:
+        return EXIT_PARTIAL_FAILURE
+    return EXIT_SUCCESS
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -328,6 +475,16 @@ def _write_job(document: dict, path: Path) -> None:
         raise FileExistsError(
             f"Job file already exists and will not be overwritten: {path}"
         ) from exc
+
+
+def _require_new_paths(*paths: Path) -> None:
+    existing = [path for path in paths if path.exists()]
+
+    if existing:
+        joined = ", ".join(str(path) for path in existing)
+        raise FileExistsError(
+            f"Output already exists and will not be overwritten: {joined}"
+        )
 
 
 if __name__ == "__main__":
