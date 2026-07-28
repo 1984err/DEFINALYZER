@@ -61,13 +61,19 @@ def execute_collection_job(
                 request,
                 pinned_block=runtime.pinned_block,
             )
+            evidence_document = collected.to_dict()
+            status = (
+                "partial"
+                if _evidence_is_partial(request.operation, evidence_document)
+                else "collected"
+            )
             records.append(
                 EvidenceRecord(
                     request_name=request.name,
                     operation=request.operation,
                     chain=request.chain,
-                    status="collected",
-                    evidence=collected.to_dict(),
+                    status=status,
+                    evidence=evidence_document,
                 )
             )
         except Exception as exc:
@@ -205,6 +211,19 @@ def _pin_latest_parameters(
         for key in ("from_block", "to_block"):
             if parameters.get(key) == "latest":
                 parameters[key] = pinned_block
+
+
+def _evidence_is_partial(
+    operation: str,
+    evidence: Mapping[str, Any],
+) -> bool:
+    if operation == "get_logs_chunked":
+        return evidence.get("complete") is False
+    if operation == "erc20_transfers":
+        logs = evidence.get("logs")
+        return isinstance(logs, Mapping) and logs.get("complete") is False
+
+    return False
 
 
 def _failed_record(

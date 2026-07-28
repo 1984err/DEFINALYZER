@@ -26,6 +26,20 @@ python -m blockchain_collector path\to\job.json path\to\evidence.json
 The evidence path must not already exist. The collector never overwrites an
 earlier evidence file.
 
+## Guided human use
+
+Run the interactive menu from the project root:
+
+```powershell
+python -m blockchain_collector.menu
+```
+
+The menu currently guides contract snapshots, ERC-20 token snapshots,
+ERC-1967 proxy-slot checks, chunked ERC-20 transfer history, and readable
+standard contract calls. It saves the generated job under `jobs/` and the
+result under `evidence/`. Neither file is overwritten if the same job name is
+used again.
+
 ## Job structure
 
 ```json

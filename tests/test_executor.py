@@ -1,6 +1,9 @@
 import unittest
 
-from blockchain_collector.executor import execute_collection_job
+from blockchain_collector.executor import (
+    _evidence_is_partial,
+    execute_collection_job,
+)
 from blockchain_collector.jobs import CollectionJob
 from blockchain_collector.rpc import RpcEvidence, SUPPORTED_CHAINS
 
@@ -79,6 +82,26 @@ def job_document():
 
 
 class ExecutorTests(unittest.TestCase):
+    def test_detects_incomplete_chunked_evidence(self):
+        self.assertTrue(
+            _evidence_is_partial(
+                "get_logs_chunked",
+                {"complete": False, "chunks": []},
+            )
+        )
+        self.assertTrue(
+            _evidence_is_partial(
+                "erc20_transfers",
+                {"logs": {"complete": False, "chunks": []}},
+            )
+        )
+        self.assertFalse(
+            _evidence_is_partial(
+                "erc20_transfers",
+                {"logs": {"complete": True, "chunks": []}},
+            )
+        )
+
     def test_executes_requests_and_continues_after_failure(self):
         clients = {}
 

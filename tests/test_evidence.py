@@ -62,6 +62,17 @@ class EvidenceWriterTests(unittest.TestCase):
                 status="failed",
             )
 
+    def test_partial_record_requires_preserved_evidence(self):
+        record = EvidenceRecord(
+            request_name="logs",
+            operation="get_logs_chunked",
+            chain="ethereum",
+            status="partial",
+            evidence={"complete": False, "chunks": []},
+        )
+
+        self.assertEqual(record.status, "partial")
+
 
 if __name__ == "__main__":
     unittest.main()

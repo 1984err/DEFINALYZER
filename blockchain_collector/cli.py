@@ -58,16 +58,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_ERROR
 
     collected = sum(record.status == "collected" for record in bundle.records)
+    partial = sum(record.status == "partial" for record in bundle.records)
     failed = sum(record.status == "failed" for record in bundle.records)
 
     print(f"Job:       {bundle.job_name}")
     print(f"Collected: {collected}")
+    print(f"Partial:   {partial}")
     print(f"Failed:    {failed}")
     print(f"Evidence:  {output_path}")
 
-    if failed:
+    if partial or failed:
         print(
-            "Evidence was written, but one or more requests could not be collected.",
+            "Evidence was written, but one or more requests are incomplete.",
             file=sys.stderr,
         )
         return EXIT_PARTIAL_FAILURE

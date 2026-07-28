@@ -22,10 +22,14 @@ class EvidenceRecord:
     collection_error: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        if self.status not in {"collected", "failed"}:
-            raise ValueError("Evidence status must be 'collected' or 'failed'.")
-        if self.status == "collected" and self.evidence is None:
-            raise ValueError("Collected evidence record requires 'evidence'.")
+        if self.status not in {"collected", "partial", "failed"}:
+            raise ValueError(
+                "Evidence status must be 'collected', 'partial', or 'failed'."
+            )
+        if self.status in {"collected", "partial"} and self.evidence is None:
+            raise ValueError(
+                "Collected or partial evidence record requires 'evidence'."
+            )
         if self.status == "failed" and self.collection_error is None:
             raise ValueError("Failed evidence record requires 'collection_error'.")
 
