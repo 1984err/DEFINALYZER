@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "name": "ethereum-weth-smoke-test",
+  "metadata": {
+    "purpose": "Exercise the raw collector against a stable public Ethereum contract.",
+    "interpretation": "None. This job only collects raw node responses."
+  },
+  "requests": [
+    {
+      "name": "weth-runtime-bytecode",
+      "chain": "ethereum",
+      "operation": "get_code",
+      "parameters": {
+        "block": "latest"
+      },
+      "target": {
+        "target_name": "WETH9",
+        "role": "smoke-test contract",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "https://etherscan.io/address/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      }
+    },
+    {
+      "name": "weth-native-balance",
+      "chain": "ethereum",
+      "operation": "get_balance",
+      "parameters": {
+        "block": "latest"
+      },
+      "target": {
+        "target_name": "WETH9",
+        "role": "smoke-test contract",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "https://etherscan.io/address/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      }
+    },
+    {
+      "name": "weth-raw-total-supply-call",
+      "chain": "ethereum",
+      "operation": "raw_call",
+      "parameters": {
+        "data": "0x18160ddd",
+        "block": "latest"
+      },
+      "target": {
+        "target_name": "WETH9",
+        "role": "smoke-test contract",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "https://etherscan.io/address/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "metadata": {
+          "call_description": "Raw totalSupply() selector supplied by the example job."
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "name": "replace-with-job-name",
+  "metadata": {
+    "purpose": "Replace with the verification request being collected.",
+    "research_page": "Replace with the originating research page."
+  },
+  "requests": [
+    {
+      "name": "contract-state",
+      "chain": "ethereum",
+      "operation": "contract_snapshot",
+      "parameters": {
+        "block": "latest",
+        "include_owner_call": true
+      },
+      "target": {
+        "target_name": "Replace with documented component name",
+        "role": "Replace with documented role",
+        "address": "0x1111111111111111111111111111111111111111",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "Replace with registry source URL or document"
+      }
+    },
+    {
+      "name": "token-state",
+      "chain": "ethereum",
+      "operation": "erc20_snapshot",
+      "parameters": {
+        "block": "latest",
+        "balance_addresses": [
+          "0x2222222222222222222222222222222222222222"
+        ]
+      },
+      "target": {
+        "target_name": "Replace with documented token name",
+        "role": "Replace with documented token role",
+        "address": "0x1111111111111111111111111111111111111111",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "Replace with registry source URL or document"
+      }
+    },
+    {
+      "name": "token-transfer-history",
+      "chain": "ethereum",
+      "operation": "erc20_transfers",
+      "parameters": {
+        "from_block": 0,
+        "to_block": "latest",
+        "chunk_size": 2000,
+        "to_address": "0x2222222222222222222222222222222222222222"
+      },
+      "target": {
+        "target_name": "Replace with documented token name",
+        "role": "Replace with documented token role",
+        "address": "0x1111111111111111111111111111111111111111",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "Replace with registry source URL or document"
+      }
+    }
+  ]
+}

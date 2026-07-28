@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "name": "ethereum-weth-mvp-check",
+  "metadata": {
+    "purpose": "End-to-end validation of token and contract snapshot recipes.",
+    "interpretation": "None. This job only collects raw and mechanically decoded evidence."
+  },
+  "requests": [
+    {
+      "name": "weth-token-snapshot",
+      "chain": "ethereum",
+      "operation": "erc20_snapshot",
+      "parameters": {
+        "block": "latest",
+        "balance_addresses": [
+          "0x0000000000000000000000000000000000000000"
+        ]
+      },
+      "target": {
+        "target_name": "WETH9",
+        "role": "MVP test token",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "https://etherscan.io/address/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      }
+    },
+    {
+      "name": "weth-contract-snapshot",
+      "chain": "ethereum",
+      "operation": "contract_snapshot",
+      "parameters": {
+        "block": "latest",
+        "include_owner_call": false
+      },
+      "target": {
+        "target_name": "WETH9",
+        "role": "MVP test contract",
+        "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+        "chain": "Ethereum",
+        "chain_id": 1,
+        "source": "https://etherscan.io/address/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+      }
+    }
+  ]
+}

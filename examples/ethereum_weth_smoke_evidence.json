@@ -1,0 +1,49 @@
+{
+  "job_name": "ethereum-weth-smoke-test",
+  "started_at": "2026-07-27T22:33:47+00:00",
+  "completed_at": "2026-07-27T22:33:49+00:00",
+  "records": [
+    {
+      "request_name": "weth-runtime-bytecode",
+      "operation": "get_code",
+      "chain": "ethereum",
+      "status": "failed",
+      "evidence": null,
+      "collection_error": {
+        "stage": "chain_setup",
+        "type": "RpcTransportError",
+        "message": "RPC request failed after 3 attempt(s): <urlopen error [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions>"
+      }
+    },
+    {
+      "request_name": "weth-native-balance",
+      "operation": "get_balance",
+      "chain": "ethereum",
+      "status": "failed",
+      "evidence": null,
+      "collection_error": {
+        "stage": "chain_setup",
+        "type": "RpcTransportError",
+        "message": "RPC request failed after 3 attempt(s): <urlopen error [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions>"
+      }
+    },
+    {
+      "request_name": "weth-raw-total-supply-call",
+      "operation": "raw_call",
+      "chain": "ethereum",
+      "status": "failed",
+      "evidence": null,
+      "collection_error": {
+        "stage": "chain_setup",
+        "type": "RpcTransportError",
+        "message": "RPC request failed after 3 attempt(s): <urlopen error [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions>"
+      }
+    }
+  ],
+  "job_source": "C:\\Users\\Valentin\\Documents\\PYTHON SCRIPTS\\DEFI RESEARCH\\TOOLS\\DEFINALYZER\\examples\\ethereum_weth_smoke_job.json",
+  "job_metadata": {
+    "purpose": "Exercise the raw collector against a stable public Ethereum contract.",
+    "interpretation": "None. This job only collects raw node responses."
+  },
+  "evidence_schema_version": 1
+}
