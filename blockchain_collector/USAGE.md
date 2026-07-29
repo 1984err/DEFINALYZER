@@ -40,6 +40,9 @@ standard contract calls. It can also collect a raw transaction and receipt
 from one transaction hash. The second menu workflow imports structured
 verification requests from a Markdown or JSON file, runs the supported rows,
 and saves ambiguous or unsupported rows in an import report for manual review.
+When launched for a DEFINALYZER project, the third workflow lists eligible
+non-conflicting targets from that project's registry. This avoids manually
+copying contract addresses, chains, roles, and source provenance.
 It saves generated jobs under `jobs/` and results under `evidence/`. Generated
 job, evidence, report, and summary files are not overwritten if the same job
 name is used again.

@@ -49,6 +49,7 @@ STANDARD_CALL_CHOICES = {
 WORKFLOW_CHOICES = {
     "1": "single_check",
     "2": "verification_import",
+    "3": "registry_check",
 }
 
 
@@ -72,8 +73,9 @@ def run_guided_menu(
         print_fn("Select workflow:")
         print_fn("  1. Create one guided evidence check")
         print_fn("  2. Import structured verification requests")
+        print_fn("  3. Select a project registry target")
         workflow = WORKFLOW_CHOICES[
-            _choice(input_fn, "Workflow [1-2]: ", WORKFLOW_CHOICES)
+            _choice(input_fn, "Workflow [1-3]: ", WORKFLOW_CHOICES)
         ]
 
         if workflow == "verification_import":
@@ -84,14 +86,26 @@ def run_guided_menu(
                 client_factory=client_factory,
             )
 
-        print_fn("")
-        print_fn("Select chain:")
-        print_fn("  1. Ethereum")
-        print_fn("  2. Arbitrum One")
-        print_fn("  3. Base")
-        chain_key, chain_name, chain_id = CHAIN_CHOICES[
-            _choice(input_fn, "Chain [1-3]: ", CHAIN_CHOICES)
-        ]
+        registry_target = None
+        if workflow == "registry_check":
+            registry_target = _select_registry_target(
+                root=root,
+                input_fn=input_fn,
+                print_fn=print_fn,
+            )
+            chain_key = registry_target["chain_key"]
+            chain_name = registry_target["chain"]
+            chain_id = registry_target["chain_id"]
+            print_fn(f"Chain: {chain_name}")
+        else:
+            print_fn("")
+            print_fn("Select chain:")
+            print_fn("  1. Ethereum")
+            print_fn("  2. Arbitrum One")
+            print_fn("  3. Base")
+            chain_key, chain_name, chain_id = CHAIN_CHOICES[
+                _choice(input_fn, "Chain [1-3]: ", CHAIN_CHOICES)
+            ]
 
         print_fn("")
         print_fn("Select check:")
@@ -100,9 +114,19 @@ def run_guided_menu(
         print_fn("  3. ERC-1967 proxy slots")
         print_fn("  4. ERC-20 transfer history")
         print_fn("  5. Standard contract read")
-        print_fn("  6. Transaction and receipt")
-        operation = CHECK_CHOICES[
-            _choice(input_fn, "Check [1-6]: ", CHECK_CHOICES)
+        available_checks = CHECK_CHOICES
+        if registry_target is None:
+            print_fn("  6. Transaction and receipt")
+        else:
+            available_checks = {
+                key: value for key, value in CHECK_CHOICES.items() if key != "6"
+            }
+        operation = available_checks[
+            _choice(
+                input_fn,
+                "Check [1-5]: " if registry_target else "Check [1-6]: ",
+                available_checks,
+            )
         ]
 
         if operation == "transaction_bundle":
@@ -138,10 +162,16 @@ def run_guided_menu(
                 "transaction_source": source,
             }
         else:
-            address = _required(input_fn, "Contract address: ")
-            target_name = _required(input_fn, "Documented component name: ")
-            role = input_fn("Documented role (optional): ").strip() or None
-            source = _required(input_fn, "Registry source URL or document: ")
+            if registry_target:
+                address = registry_target["address"]
+                target_name = registry_target["target_name"]
+                role = registry_target["role"]
+                source = registry_target["source"]
+            else:
+                address = _required(input_fn, "Contract address: ")
+                target_name = _required(input_fn, "Documented component name: ")
+                role = input_fn("Documented role (optional): ").strip() or None
+                source = _required(input_fn, "Registry source URL or document: ")
             job_name = _job_name(_required(input_fn, "Short job name: "))
             parameters = _operation_parameters(operation, input_fn, print_fn)
             requests = [
@@ -281,6 +311,116 @@ def _run_import_workflow(
     if partial or failed or manual:
         return EXIT_PARTIAL_FAILURE
     return EXIT_SUCCESS
+
+
+def _select_registry_target(
+    *,
+    root: Path,
+    input_fn: InputFunction,
+    print_fn: PrintFunction,
+) -> dict:
+    registry_path = root.parents[1] / "registries" / root.name / "registry.json"
+    if not registry_path.exists():
+        raise FileNotFoundError(
+            "No project registry was found. Run registry generation first: "
+            f"{registry_path}"
+        )
+    document = json.loads(registry_path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise ValueError("Project registry must be a JSON object.")
+
+    chain_lookup = {
+        chain_name.casefold(): (chain_key, display_name, chain_id)
+        for chain_key, display_name, chain_id in CHAIN_CHOICES.values()
+        for chain_name in (
+            display_name,
+            display_name.replace(" One", ""),
+            display_name.replace(" Mainnet", ""),
+        )
+    }
+    targets = []
+    for row in document.get("addresses", []):
+        if not isinstance(row, dict):
+            continue
+        chain = str(row.get("chain", "")).casefold()
+        chain_data = chain_lookup.get(chain)
+        if (
+            chain_data is None
+            or row.get("status") in {"conflicting", "documented_unresolved"}
+            or row.get("provenance") not in {"official_registry", "documented"}
+        ):
+            continue
+        targets.append(
+            {
+                "target_name": row.get("name"),
+                "role": row.get("role"),
+                "address": row.get("address"),
+                "source": row.get("source"),
+                "chain_key": chain_data[0],
+                "chain": chain_data[1],
+                "chain_id": chain_data[2],
+                "kind": row.get("component_type", "Contract"),
+            }
+        )
+    for row in document.get("tokens", []):
+        if not isinstance(row, dict):
+            continue
+        chain_data = chain_lookup.get(str(row.get("network", "")).casefold())
+        if chain_data is None:
+            continue
+        targets.append(
+            {
+                "target_name": row.get("symbol") or row.get("name"),
+                "role": row.get("protocol_relationship"),
+                "address": row.get("address"),
+                "source": row.get("source"),
+                "chain_key": chain_data[0],
+                "chain": chain_data[1],
+                "chain_id": chain_data[2],
+                "kind": row.get("token_type", "Token"),
+            }
+        )
+    valid = [
+        target
+        for target in targets
+        if all(
+            isinstance(target.get(field), str) and target[field].strip()
+            for field in ("target_name", "address", "source")
+        )
+    ]
+    deduplicated = {
+        (
+            target["target_name"].casefold(),
+            target["chain_key"],
+            target["address"].casefold(),
+        ): target
+        for target in valid
+    }
+    ordered = sorted(
+        deduplicated.values(),
+        key=lambda target: (
+            target["chain"].casefold(),
+            target["kind"].casefold(),
+            target["target_name"].casefold(),
+        ),
+    )
+    if not ordered:
+        raise ValueError(
+            "The registry has no non-conflicting targets on supported chains."
+        )
+
+    print_fn("")
+    print_fn("Select registry target:")
+    choices = {}
+    for index, target in enumerate(ordered, start=1):
+        key = str(index)
+        choices[key] = target
+        print_fn(
+            f"  {key}. {target['target_name']} "
+            f"({target['kind']}, {target['chain']})"
+        )
+    selected = _choice(input_fn, "Target number: ", choices)
+    return choices[selected]
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -16,11 +16,13 @@ from crawl4ai import (
     CrawlerRunConfig,
     SeedingConfig,
 )
+from crawler.discovery import direct_url_for_domain, matching_internal_urls
 
 
 DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent / "output"
 DEFAULT_PATTERN = "*/docs/*"
 DEFAULT_RETRIES = 2
+SITE_WIDE_PATTERN = "*"
 
 
 @dataclass
@@ -153,8 +155,17 @@ def create_markdown_document(
     )
 
 
-async def discover_urls(domain: str, pattern: str) -> list[str]:
-    """Discover matching documentation URLs from the domain sitemap."""
+async def discover_urls(
+    domain: str,
+    pattern: str,
+    *,
+    seed_url: str | None = None,
+) -> list[str]:
+    """Resolve a direct page URL or discover matching URLs from a sitemap."""
+    direct_url = direct_url_for_domain(domain, pattern)
+    if direct_url:
+        return [direct_url]
+
     async with AsyncUrlSeeder() as seeder:
         results = await seeder.urls(
             domain,
@@ -172,7 +183,23 @@ async def discover_urls(domain: str, pattern: str) -> list[str]:
         and item["url"].strip()
     }
 
-    return sorted(discovered)
+    if discovered or not seed_url:
+        return sorted(discovered)
+
+    crawl_config = CrawlerRunConfig(only_text=True, word_count_threshold=1)
+    async with AsyncWebCrawler() as crawler:
+        result = await crawler.arun(url=seed_url, config=crawl_config)
+    if not result.success:
+        return []
+
+    links = getattr(result, "links", {})
+    internal = links.get("internal", []) if isinstance(links, dict) else []
+    return matching_internal_urls(
+        domain=domain,
+        pattern=pattern,
+        links=internal,
+        seed_url=seed_url,
+    )
 
 
 async def crawl_page(
@@ -243,7 +270,14 @@ async def crawl_protocol(
     print(f"Pattern:  {pattern}")
     print("Discovering documentation URLs...")
 
-    urls = await discover_urls(domain, pattern)
+    urls = await discover_urls(domain, pattern, seed_url=docs_url)
+    if not urls and pattern == DEFAULT_PATTERN:
+        print(
+            "No /docs/ URLs found; retrying discovery across the "
+            "documentation domain."
+        )
+        pattern = SITE_WIDE_PATTERN
+        urls = await discover_urls(domain, pattern, seed_url=docs_url)
 
     if not urls:
         raise RuntimeError(
@@ -255,6 +289,7 @@ async def crawl_protocol(
     crawl_config = CrawlerRunConfig(
         only_text=True,
         word_count_threshold=50,
+        excluded_tags=["nav", "header", "footer", "aside"],
     )
 
     saved = 0

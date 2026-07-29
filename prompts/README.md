@@ -27,10 +27,11 @@ After the research pages and registry are complete, provide them to
 `templates/template_verification_page.md`. It creates:
 
 - one categorized verification page per protocol, chain, or token
+- an analyst route, short procedure, and likely source for every check
 - stable Obsidian block links for material claims
 - a link-insertion map
 - the strict machine-readable block accepted by the blockchain collector
 
-The verification planner selects evidence requests but does not evaluate
-claims. Evidence evaluation and research-link insertion are later workflow
-steps.
+The verification planner is an analyst checklist with an optional automated
+evidence layer. It selects evidence requests but does not evaluate claims.
+Evidence evaluation and research-link insertion are later workflow steps.

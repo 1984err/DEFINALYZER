@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Mapping, Protocol
 
 
-WINDOWS_SAFE_PROMPT_CHARS = 24_000
+WINDOWS_SAFE_PROMPT_CHARS = 28_000
 
 
 class ProviderError(RuntimeError):
@@ -79,11 +79,14 @@ class HermesCliProvider:
         )
         environment = dict(os.environ)
         environment["PYTHONUTF8"] = "1"
+        environment["PYTHONIOENCODING"] = "utf-8"
 
         try:
             result = self._command_runner(
                 command,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 capture_output=True,
                 cwd=str(Path(working_directory).resolve()),
                 env=environment,

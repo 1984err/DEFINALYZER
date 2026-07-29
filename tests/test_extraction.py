@@ -3,9 +3,12 @@ import unittest
 from pathlib import Path
 
 from definalyzer.extraction import (
+    RESEARCH_CATEGORIES,
     build_extraction_prompt,
     extract_research_page,
+    extract_research_page_chunked,
     load_source_bundle,
+    split_source_chunks,
     validate_extraction_output,
 )
 from definalyzer.providers import ProviderResponse
@@ -25,6 +28,39 @@ class FakeProvider:
             ),
             provider=self.name,
             command=("fake",),
+        )
+
+
+class ChunkProvider:
+    name = "chunk-fake"
+
+    def __init__(self, fail_on_call=None):
+        self.prompts = []
+        self.fail_on_call = fail_on_call
+
+    def generate(self, prompt, *, working_directory):
+        self.prompts.append(prompt)
+        if self.fail_on_call == len(self.prompts):
+            raise RuntimeError("simulated provider interruption")
+        if "# Shared Research-Ledger Task" in prompt:
+            text = "# Research Ledger\n\n" + "\n\n".join(
+                f"## {category}\n\n"
+                "- Relevant documented fact [source.md]"
+                for category in RESEARCH_CATEGORIES
+            )
+        elif "# Fact-Ledger Reduction" in prompt:
+            text = "# Fact Ledger\n\n- Deduplicated documented fact [source.md]"
+        else:
+            heading = (
+                "# Architecture"
+                if "# Architecture" in prompt
+                else "# Protocol Overview"
+            )
+            text = f"{heading}\n\n# Facts\n\n- Final documented fact"
+        return ProviderResponse(
+            text=text,
+            provider=self.name,
+            command=("chunk-fake",),
         )
 
 
@@ -49,6 +85,27 @@ class ExtractionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "chunking"):
                 load_source_bundle(root, maximum_characters=50)
 
+    def test_excludes_obvious_non_research_pages_from_ai_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "protocol.md").write_text("protocol facts", encoding="utf-8")
+            brand = root / "brand-guidelines"
+            brand.mkdir()
+            (brand / "logo.md").write_text("logo rules", encoding="utf-8")
+            legal = root / "terms-of-service"
+            legal.mkdir()
+            (legal / "terms.md").write_text("legal boilerplate", encoding="utf-8")
+            (root / "media-coverage.md").write_text(
+                "press links",
+                encoding="utf-8",
+            )
+
+            bundle, files = load_source_bundle(root)
+
+        self.assertEqual([path.name for path in files], ["protocol.md"])
+        self.assertIn("protocol facts", bundle)
+        self.assertNotIn("logo rules", bundle)
+
     def test_builds_prompt_without_omitting_source(self):
         prompt = build_extraction_prompt(
             master_prompt="MASTER",
@@ -59,6 +116,151 @@ class ExtractionTests(unittest.TestCase):
         self.assertIn("MASTER", prompt)
         self.assertIn("TEMPLATE", prompt)
         self.assertIn("SOURCE", prompt)
+
+    def test_splits_large_individual_file_without_losing_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = ("alpha beta gamma\n\n" * 200).strip()
+            (root / "large.md").write_text(original, encoding="utf-8")
+
+            chunks, files, character_count = split_source_chunks(
+                root,
+                maximum_characters=500,
+            )
+
+        reconstructed = "\n".join(
+            chunk.text.split("\n\n", 1)[1].strip() for chunk in chunks
+        )
+        self.assertEqual(len(files), 1)
+        self.assertEqual(character_count, len(original))
+        self.assertEqual(
+            "".join(reconstructed.split()),
+            "".join(original.split()),
+        )
+
+    def test_chunked_extraction_saves_ledgers_and_final_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manager = WorkspaceManager(root / "output")
+            workspace = manager.create_project(name="Chunked")
+            (workspace.sources_directory / "one.md").write_text(
+                "a" * 2_500,
+                encoding="utf-8",
+            )
+            (workspace.sources_directory / "two.md").write_text(
+                "b" * 2_500,
+                encoding="utf-8",
+            )
+            prompts = self._write_prompts(root)
+            provider = ChunkProvider()
+
+            result = extract_research_page_chunked(
+                workspace=workspace,
+                template_name="protocol-overview",
+                provider=provider,
+                prompts_root=prompts,
+                maximum_prompt_characters=4_000,
+            )
+
+            state = (
+                workspace.project_root
+                / "extraction"
+                / "shared-research"
+                / "state.json"
+            )
+            state_exists = state.exists()
+
+        self.assertEqual(result.mode, "chunked")
+        self.assertGreaterEqual(result.provider_calls, 3)
+        self.assertTrue(state_exists)
+
+    def test_chunked_extraction_resumes_completed_ledgers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manager = WorkspaceManager(root / "output")
+            workspace = manager.create_project(name="Resume")
+            (workspace.sources_directory / "one.md").write_text(
+                "a" * 2_500,
+                encoding="utf-8",
+            )
+            (workspace.sources_directory / "two.md").write_text(
+                "b" * 2_500,
+                encoding="utf-8",
+            )
+            prompts = self._write_prompts(root)
+
+            with self.assertRaisesRegex(RuntimeError, "interruption"):
+                extract_research_page_chunked(
+                    workspace=workspace,
+                    template_name="protocol-overview",
+                    provider=ChunkProvider(fail_on_call=2),
+                    prompts_root=prompts,
+                    maximum_prompt_characters=4_000,
+                )
+
+            result = extract_research_page_chunked(
+                workspace=workspace,
+                template_name="protocol-overview",
+                provider=ChunkProvider(),
+                prompts_root=prompts,
+                maximum_prompt_characters=4_000,
+            )
+
+        self.assertGreaterEqual(result.reused_calls, 1)
+
+    def test_second_template_reuses_shared_research_ledgers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manager = WorkspaceManager(root / "output")
+            workspace = manager.create_project(name="Shared")
+            (workspace.sources_directory / "one.md").write_text(
+                "a" * 5_000,
+                encoding="utf-8",
+            )
+            prompts = self._write_prompts(root)
+            provider_one = ChunkProvider()
+            extract_research_page_chunked(
+                workspace=workspace,
+                template_name="protocol-overview",
+                provider=provider_one,
+                prompts_root=prompts,
+                maximum_prompt_characters=4_000,
+            )
+            provider_two = ChunkProvider()
+            result = extract_research_page_chunked(
+                workspace=workspace,
+                template_name="architecture",
+                provider=provider_two,
+                prompts_root=prompts,
+                maximum_prompt_characters=4_000,
+            )
+
+        self.assertGreater(result.reused_calls, 0)
+        self.assertFalse(
+            any(
+                "# Shared Research-Ledger Task" in prompt
+                for prompt in provider_two.prompts
+            )
+        )
+
+    @staticmethod
+    def _write_prompts(root):
+        prompts = root / "prompts"
+        templates = prompts / "templates"
+        templates.mkdir(parents=True)
+        (prompts / "master_prompt.md").write_text(
+            "Extract material facts only.",
+            encoding="utf-8",
+        )
+        (templates / "template_protocol_overview.md").write_text(
+            "# Protocol Overview\n\n# Facts",
+            encoding="utf-8",
+        )
+        (templates / "template_architecture.md").write_text(
+            "# Architecture\n\n# Facts",
+            encoding="utf-8",
+        )
+        return prompts
 
     def test_writes_validated_page_with_provenance_frontmatter(self):
         with tempfile.TemporaryDirectory() as directory:

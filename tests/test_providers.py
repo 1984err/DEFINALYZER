@@ -57,7 +57,7 @@ class HermesProviderTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ProviderError, "too large"):
-                provider.generate("x" * 24_001, working_directory=directory)
+                provider.generate("x" * 28_001, working_directory=directory)
 
         runner.assert_not_called()
 

@@ -55,3 +55,7 @@ Include only high-level items not owned more specifically by another page.
 
 | Missing or Conflicting Information | Why It Matters |
 |---|---|
+
+Do not combine documented and undocumented attributes in one unknown. If part
+of a proposed unknown is documented, remove that part and name only the
+specific missing information.

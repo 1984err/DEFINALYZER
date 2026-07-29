@@ -46,6 +46,16 @@ class PromptStructureTests(unittest.TestCase):
                     text,
                 )
 
+    def test_master_prompt_uses_decision_aware_detail_depth(self):
+        text = (PROMPTS / "master_prompt.md").read_text(encoding="utf-8")
+
+        self.assertIn("## Detail Depth", text)
+        self.assertIn("**Core mechanism**", text)
+        self.assertIn("**Material supporting system**", text)
+        self.assertIn("**Routine feature**", text)
+        self.assertIn("do not silently discard it", text)
+        self.assertNotIn("maximum rows", text.casefold())
+
     def test_verification_template_is_categorized_and_import_compatible(self):
         text = (
             TEMPLATES / "template_verification_page.md"
@@ -54,6 +64,10 @@ class PromptStructureTests(unittest.TestCase):
         self.assertIn("Token Supply and Economics", text)
         self.assertIn("Governance and Administrative Control", text)
         self.assertIn("Manual Review", text)
+        self.assertIn("| Check route |", text)
+        self.assertIn("| How to check |", text)
+        self.assertIn("| Likely source |", text)
+        self.assertIn("analyst work queue", text)
         self.assertEqual(text.count("```definalyzer-verification"), 1)
         self.assertIn('"schema_version": 1', text)
         self.assertIn("^<lowercase-id>", text)

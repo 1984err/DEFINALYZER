@@ -44,6 +44,37 @@ Exclude:
   or risk
 - generic blockchain or DeFi explanations
 
+## Detail Depth
+
+Choose detail depth by the subject's documented importance, not by a fixed row
+or word limit:
+
+1. **Core mechanism** — preserve the material mechanics, asset or data flows,
+   control points, dependencies, constraints, and failure conditions.
+2. **Material supporting system** — summarize its economic purpose,
+   dependency, control authority, material restrictions, and effect on the
+   protocol or token. Do not reproduce every operational variant.
+3. **Routine feature** — include only when it changes an investment-relevant
+   field; otherwise omit it.
+
+For incentives, points, campaigns, referrals, interface strategies, and similar
+supporting systems, normally retain only:
+
+- what behavior they incentivize
+- their funding or reward source
+- who controls rates, eligibility, or allocation
+- whether rewards are transferable or affect token distribution
+- material restrictions, dependencies, and unresolved terms
+
+Expand a supporting system only when the supplied documentation shows that it
+is a major source of protocol adoption, liquidity, revenue, token allocation,
+solvency, or continued operation.
+
+When the documentation does not provide enough information to determine
+whether an omitted detail is material, do not silently discard it. Record the
+specific uncertainty under **Material Unknowns** without copying the underlying
+routine mechanics.
+
 ## Compression Rules
 
 - One fact per bullet or table row.
@@ -100,3 +131,4 @@ Verification is handled in a separate verification-planning workflow.
 - Do not add introductory or closing prose.
 - Do not cite a source unless the template requests source provenance.
 - Return Markdown optimized for Obsidian and machine parsing.
+- Use plain ASCII punctuation for reliable cross-platform file handling.

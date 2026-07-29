@@ -35,6 +35,55 @@ def successful_bundle(job):
 
 class GuidedMenuTests(unittest.TestCase):
     @patch("blockchain_collector.menu.execute_collection_job")
+    def test_selects_supported_target_from_project_registry(self, execute_job):
+        execute_job.side_effect = lambda job, **kwargs: successful_bundle(job)
+        prompts = answers(["3", "1", "3", "Pool Proxy Slots"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            project = output / "projects" / "example"
+            registry = output / "registries" / "example"
+            project.mkdir(parents=True)
+            registry.mkdir(parents=True)
+            (registry / "registry.json").write_text(
+                json.dumps(
+                    {
+                        "addresses": [
+                            {
+                                "name": "POOL",
+                                "component_type": "Pool",
+                                "role": "Lending pool",
+                                "address": ADDRESS,
+                                "chain": "Ethereum",
+                                "chain_id": 1,
+                                "status": "published_current",
+                                "source": "official-address-book.sol",
+                                "provenance": "official_registry",
+                            }
+                        ],
+                        "tokens": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            exit_code = run_guided_menu(
+                input_fn=prompts,
+                print_fn=lambda message: None,
+                working_directory=project,
+            )
+            document = json.loads(
+                (project / "jobs" / "pool-proxy-slots.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        request = document["requests"][0]
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(request["operation"], "eip1967_slots")
+        self.assertEqual(request["target"]["target_name"], "POOL")
+        self.assertEqual(request["target"]["source"], "official-address-book.sol")
+
+    @patch("blockchain_collector.menu.execute_collection_job")
     def test_builds_saves_and_executes_contract_job(self, execute_job):
         execute_job.side_effect = lambda job, **kwargs: successful_bundle(job)
         prompts = answers(

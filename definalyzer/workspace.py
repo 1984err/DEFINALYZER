@@ -111,6 +111,7 @@ class WorkspaceManager:
             self.root / "vault" / "Chains",
             self.root / "vault" / "Tokens",
             self.root / "vault" / "Verification",
+            self.root / "vault" / "Analyst Reviews",
             self.root / "vault" / "Indexes",
         )
         for directory in directories:

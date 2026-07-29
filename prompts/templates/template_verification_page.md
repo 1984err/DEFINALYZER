@@ -3,14 +3,15 @@
 ## Objective
 
 Using the completed research pages and protocol registry, create one concise,
-categorized verification page for the protocol, chain, or token.
+categorized analyst verification checklist for the protocol, chain, or token.
 
 Select only claims whose accuracy could materially change an investment,
 trust, security, economic, or operational assessment. Do not verify routine
 facts merely because they are observable.
 
-This step plans evidence collection. It does not decide whether a claim is
-true.
+This page is an analyst work queue. Automation should remove routine work when
+possible, but manual entries are expected and useful. This step plans evidence
+collection; it does not decide whether a claim is true.
 
 ## Selection Rules
 
@@ -84,6 +85,9 @@ For every claim, use this compact structure:
 | Materiality | One sentence explaining what assessment could change |
 | Research source | Obsidian note and heading |
 | Registry target | Component name and address, when applicable |
+| Check route | Automated, Assisted, or Manual |
+| How to check | Short, actionable procedure an analyst can follow |
+| Likely source | Official contract, explorer, governance system, API, or documentation location |
 | Evidence required | Exact state, event range, transaction, or configuration |
 | Collector request | Lowercase request ID, or Manual |
 | Evidence | Not collected |
@@ -92,7 +96,15 @@ For every claim, use this compact structure:
 
 ^<lowercase-id>
 
-Keep `Materiality` to one sentence. Do not add explanatory paragraphs.
+Use `Automated` only when the included collector request can directly gather
+the required evidence. Use `Assisted` when automation gathers only part of the
+evidence. Use `Manual` when no collector request is safe or sufficient. Keep
+`Materiality`, `How to check`, and `Likely source` concise. Do not add
+explanatory paragraphs.
+
+`Research source` and every Research Link Map `Claim Location` must use an
+exact Markdown heading from the named research note. Do not use a table-row
+label or an invented subsection name.
 
 ## Research Link Map
 
@@ -124,6 +136,9 @@ Supported evidence recipes:
 - `get_transaction` and `get_transaction_receipt`: documented transaction hash
 - raw collector operations only when all calldata, slots, topics, addresses,
   and ranges are explicitly available
+
+For `standard_call`, use the parameter key `function`, for example:
+`{"function": "totalSupply", "block": "latest"}`. Do not use `method`.
 
 The JSON object must follow this exact shape:
 
@@ -166,5 +181,9 @@ interpretation fields.
 - Output only the verification page.
 - Do not repeat general research facts.
 - Do not claim that collected evidence verifies anything.
+- Treat the page as an analyst checklist, not a guarantee of automated
+  verification.
+- For manual items, provide useful checking instructions and likely official
+  sources instead of leaving an unexplained failure.
 - Do not create entries simply to populate categories.
 - Do not add an Automation Opportunities section.
