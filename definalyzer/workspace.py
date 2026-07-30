@@ -190,6 +190,13 @@ class WorkspaceManager:
 
         self._write_new(document, manifest)
         self._write_project_index(workspace)
+        from .source_coverage import (
+            ensure_source_coverage,
+            write_coverage_source,
+        )
+
+        ensure_source_coverage(workspace)
+        write_coverage_source(workspace)
         return workspace
 
     def load_project(self, name_or_slug: str) -> ProjectWorkspace:

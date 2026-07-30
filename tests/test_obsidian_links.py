@@ -28,7 +28,8 @@ class ObsidianLinkTests(unittest.TestCase):
                 "|---|---|---|---|\n"
                 "| VR-GOV-001 | "
                 "[[Protocols/Example/Architecture\\|Architecture]] | "
-                "Upgrade and Control Model; Critical Trust Boundaries | "
+                "Upgrade and Control Model: proxy authority; "
+                "Critical Trust Boundaries | "
                 "[[Example - Verification#^vr-gov-001\\|verification]] |\n\n"
                 "## Collector Requests\n",
                 encoding="utf-8",
@@ -48,6 +49,7 @@ class ObsidianLinkTests(unittest.TestCase):
         self.assertEqual(second.inserted_links, 1)
         self.assertEqual(text.count("VR-GOV-001"), 1)
         self.assertNotIn("definalyzer-verification-links", text)
+        self.assertIn("VR-GOV-001]]\n\n| Fact | Value |", text)
         self.assertIn(
             "[[Verification/Example - Verification#^vr-gov-001|"
             "VR-GOV-001]]",

@@ -102,10 +102,13 @@ class MarketDataTests(unittest.TestCase):
         self.assertIn("/coins/arbitrum-one/contract/0xaaaaaaaa", calls[0])
         self.assertEqual(first.refreshed, 1)
         self.assertEqual(second.reused, 1)
-        self.assertIn("## Market Snapshot (Third Party)", text)
-        self.assertIn("| Price (USD) | $1.25 |", text)
-        self.assertIn("| Supply | Documented supply |", text)
-        self.assertIn("does not overwrite documented tokenomics", text)
+        self.assertIn("## Current Supply Data — CoinGecko", text)
+        self.assertIn("| Fully diluted valuation | $1,250,000 |", text)
+        self.assertNotIn("| Price (USD)", text)
+        self.assertNotIn("| 24h volume", text)
+        self.assertNotIn("| Market cap (USD)", text)
+        self.assertNotIn("| Supply | Documented supply |", text)
+        self.assertIn("never filled by AI", text)
 
     def test_unlisted_token_is_visible_without_raising(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -145,7 +148,58 @@ class MarketDataTests(unittest.TestCase):
 
         self.assertEqual(calls, [])
         self.assertEqual(result.snapshots[0].status, "unavailable")
-        self.assertIn("No supported network", result.snapshots[0].detail)
+        self.assertIn(
+            "No documented contract or mint",
+            result.snapshots[0].detail,
+        )
+
+    def test_discovers_platform_from_exact_address_when_network_is_missing(self):
+        document = registry_document()
+        document["addresses"] = []
+        document["tokens"][0]["address"] = "So1anaExactMint"
+        calls = []
+
+        def fetch(url):
+            calls.append(url)
+            if "/coins/list" in url:
+                return [
+                    {
+                        "id": "example-solana",
+                        "symbol": "exm",
+                        "name": "Example",
+                        "platforms": {"solana": "So1anaExactMint"},
+                    }
+                ]
+            return {
+                "id": "example-solana",
+                "name": "Example",
+                "symbol": "exm",
+                "last_updated": "2026-07-30T00:00:00Z",
+                "market_data": {
+                    "fully_diluted_valuation": {"usd": 2_000_000},
+                    "circulating_supply": 400_000,
+                    "total_supply": 1_000_000,
+                    "max_supply": 1_000_000,
+                },
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.make_workspace(directory)
+            (workspace.registry_directory / "registry.json").write_text(
+                json.dumps(document),
+                encoding="utf-8",
+            )
+            result = refresh_market_data(
+                workspace=workspace,
+                fetch_json=fetch,
+                now=datetime(2026, 7, 30, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(result.snapshots[0].status, "available")
+        self.assertEqual(result.snapshots[0].platform_id, "solana")
+        self.assertEqual(result.snapshots[0].network, "Solana")
+        self.assertIn("/coins/list?include_platform=true", calls[0])
+        self.assertIn("/coins/solana/contract/So1anaExactMint", calls[1])
 
 
 if __name__ == "__main__":

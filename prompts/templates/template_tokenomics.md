@@ -2,8 +2,10 @@
 
 > TEMPLATE INSTRUCTIONS — DO NOT INCLUDE IN OUTPUT.
 >
-> Extract token facts material to utility, dilution, holder concentration,
-> incentives, value capture, and control. Do not include price or market data.
+> Extract token mechanics material to utility, dilution, holder concentration,
+> incentives, value capture, vesting, and control. Do not include current
+> supply statistics, price, valuation, or market data. Current circulating,
+> total, and maximum supply belong only on the deterministic token index.
 
 # Facts
 
@@ -14,6 +16,7 @@
 | Name | |
 | Symbol | |
 | Network and standard | |
+| Official contract or mint address | |
 | Primary economic role | |
 
 Use **Not applicable** when there is no protocol token.
@@ -25,18 +28,16 @@ Use **Not applicable** when there is no protocol token.
 
 Exclude aspirational utility without a documented mechanism.
 
-## Supply
+## Issuance and Supply Control
 
 | Field | Value |
 |---|---|
-| Maximum supply | |
-| Initial supply | |
-| Current/circulating supply date | |
 | Mint authority | |
-| Supply constraints | |
+| Enforceable issuance cap or formula | |
+| Supply-changing permissions | |
 
-Include current or circulating supply only when the documentation states both
-the value and its date or reference point.
+Describe enforceable mechanics and controlling authority, not current, total,
+circulating, initial, or maximum-supply statistics.
 
 ## Allocation and Vesting
 

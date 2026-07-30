@@ -24,6 +24,11 @@
 Merge the former revenue-source and fee tables: do not list the same charge
 twice.
 
+For long tiered fee schedules, preserve the decision-relevant range, fee
+recipients, calculation basis, and material breakpoints. Do not reproduce
+every tier unless individual tiers create materially different rights,
+control, or risk.
+
 ## Distribution
 
 | Source | Recipient | Share or Formula | Condition | Destination |

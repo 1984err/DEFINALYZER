@@ -89,10 +89,11 @@ def insert_verification_links(
                 (
                     "",
                     f"Verification: {links}",
+                    "",
                 )
             )
             inserted += len(rows)
-        updated = "\n".join(output).rstrip() + "\n"
+        updated = _normalize_markdown_spacing("\n".join(output)).rstrip() + "\n"
         if updated != original:
             path.write_text(updated, encoding="utf-8", newline="\n")
             changed.append(path)
@@ -173,6 +174,7 @@ def _match_heading(
             for line, title in headings
             if candidate.startswith(title + " —")
             or candidate.startswith(title + " -")
+            or candidate.startswith(title + ":")
         ]
         if prefix:
             return prefix[0]
@@ -181,6 +183,27 @@ def _match_heading(
 
 def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().casefold()
+
+
+def _normalize_markdown_spacing(text: str) -> str:
+    normalized: list[str] = []
+    for line in text.splitlines():
+        is_table = line.startswith("|") and line.endswith("|")
+        previous_is_table = bool(
+            normalized
+            and normalized[-1].startswith("|")
+            and normalized[-1].endswith("|")
+        )
+        if is_table and normalized and normalized[-1].strip() and not previous_is_table:
+            normalized.append("")
+        if (
+            normalized
+            and re.match(r"^#{1,6}\s+\S", normalized[-1])
+            and line.strip()
+        ):
+            normalized.append("")
+        normalized.append(line)
+    return "\n".join(normalized)
 
 
 def strip_generated_verification_links(text: str) -> str:

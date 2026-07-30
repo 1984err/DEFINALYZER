@@ -14,7 +14,7 @@ verification is skipped or unavailable.
 - Automated Hermes prompt execution: available
 - Resumable full-document chunk extraction: available
 - Categorized, resumable verification planning: available
-- Optional keyless CoinGecko token snapshots: available
+- Deterministic keyless CoinGecko supply enrichment: available
 - Section-scoped, read-only AI explanations: available
 - Automated evidence evaluation and Obsidian link insertion: deferred
 
@@ -54,11 +54,22 @@ python main.py
 The menu supports project creation, complete-workflow status, separate
 workflow stages, crawling, blockchain collection, and project status.
 
+**Run complete workflow** now executes the usable research pipeline:
+documentation collection, all missing research pages, registry generation,
+deterministic CoinGecko supply enrichment, source-coverage reporting, and—when
+the project was created with verification requested—the categorized
+verification checklist. Existing sources, pages, and resumable extraction
+ledgers are reused by default.
+
 ## Power-user commands
 
 ```powershell
 python main.py init "Example Protocol" --docs-url https://docs.example.org
+python main.py all example-protocol
 python main.py crawl example-protocol
+python main.py source add example-protocol --category tokenomics --url https://example.org/token
+python main.py source crawl example-protocol --category tokenomics
+python main.py source list example-protocol
 python main.py extract example-protocol --template protocol-overview
 python main.py registry example-protocol
 python main.py market-data example-protocol
@@ -69,6 +80,20 @@ python main.py review example-protocol
 python main.py status example-protocol
 python main.py collect example-protocol
 ```
+
+Rerun `python main.py all <project>` after an interruption to resume from
+existing outputs. Use `--refresh` only when you intentionally want to recrawl
+the primary documentation and replace every generated research page:
+
+```powershell
+python main.py all example-protocol --refresh
+```
+
+Verification remains optional. Projects created with verification status
+`not_requested` or `unsupported` finish with analysis-ready research and an
+explicit “verification skipped” message. Projects configured as `pending`
+continue through verification planning; manual-review checks are a successful
+workflow result, not a pipeline failure.
 
 Extraction mode defaults to `auto`: a small source set uses one provider call;
 a larger set is split into resumable fact-ledger batches and consolidated.
@@ -87,6 +112,29 @@ dedicated documentation domains without protocol-specific crawler rules.
 Obvious branding, privacy, legal-boilerplate, and media-index pages remain
 saved locally but are excluded from AI research input.
 
+A documentation root is not assumed to cover every decision-relevant topic.
+Projects track official sources separately for technical documentation,
+tokenomics, fees/revenue, and governance/security. Missing categories are
+shown on every generated research page and mean **not assessed**, not
+nonexistent. Add and crawl exact official pages through **Manage official
+sources** in the menu or the `source` commands above. Collected sources join
+the normal extraction corpus; the output format stays uniform across
+protocols.
+
+Public GitHub documentation repositories use a separate importer; the website
+crawler is not modified or emulated. Set the project documentation URL to the
+repository root, such as `https://github.com/owner/public-docs`, and run the
+normal **Crawl documentation** action. The importer downloads Markdown only,
+pins the import to an immutable commit, preserves repository paths, and records
+file URLs and hashes in `github-import.json`. Code, IDLs, binaries, issues, and
+pull requests are not imported. Existing imports are reused unless refresh is
+requested; refresh may replace or remove only files owned by the prior import
+manifest. A branch, tag, or commit may be selected with `--ref`:
+
+```powershell
+python main.py crawl example-protocol --ref main
+```
+
 If a provider call fails, rerunning the same extraction reuses completed
 ledgers. A changed source crawl or changed prompt intentionally invalidates that
 state rather than mixing different source versions. Estimate the initial work
@@ -100,6 +148,7 @@ The existing tools remain independently available:
 
 ```powershell
 python -m crawler.crawler
+python -m crawler.github_importer "Example Protocol" https://github.com/owner/public-docs --output output/sources/example-protocol
 python -m blockchain_collector.menu
 python -m blockchain_collector.capabilities
 ```
@@ -135,14 +184,24 @@ receipt tokens, and external dependencies do not receive token pages. Research
 pages link the first meaningful reference to each qualifying token; repeated
 mentions remain plain text to keep the notes readable.
 
-Market snapshots are optional and independent of registry generation. Run
-**Refresh token market data** from the main menu, or use `python main.py
-market-data <project>`. CoinGecko matching uses a registered network and
-contract address rather than a token name or symbol. Results are cached for one
-hour and display price, market cap, FDV, volume, supply, source, and timestamps
-in a clearly labeled third-party section. Missing listings, unsupported native
-assets without contract addresses, and network failures remain visible without
-blocking research or verification. Use `--refresh` to ignore a recent cache.
+Current supply enrichment runs automatically after registry generation and is
+also independently refreshable through **Refresh current token supply data**
+or `python main.py market-data <project>`. It does not use AI. CoinGecko
+matching uses an exact contract or mint address, discovering the platform when
+the official network field is absent. Results are cached for one day and
+display only FDV, circulating supply, total supply, maximum supply, source, and
+timestamp in a clearly labeled third-party section. Price, market cap, and
+short-term volume are intentionally omitted. Missing or ambiguous matches and
+network failures remain visible without blocking research or verification.
+Use `--refresh` to ignore the cache.
+
+The research and token-index roles are intentionally separate. `Tokenomics.md`
+records protocol-linked mechanics such as utility, value rights, issuance
+controls, allocation, vesting and unlocks, emissions, burns, incentives, and
+restrictions. It does not contain current circulating, total, or maximum
+supply statistics. The token index is the concise identity-and-statistics page;
+its current supply fields and FDV come only from deterministic CoinGecko
+enrichment, never from AI.
 
 For help interpreting a research entry, choose **Explain a research-page
 entry** from the main menu. Select one project page and one Markdown heading,

@@ -36,10 +36,21 @@ from .market_data import refresh_market_data
 from .obsidian_links import insert_verification_links
 from .providers import ProviderError, create_provider
 from .registry_workflow import (
+    registry_needs_token_discovery,
     refresh_token_pages_from_registry,
     run_registry_workflow,
 )
 from .settings import SettingsManager
+from .source_coverage import (
+    CATEGORIES,
+    CATEGORY_LABELS,
+    add_official_source,
+    ensure_source_coverage,
+    sources_for_category,
+    sync_research_coverage,
+    update_source_status,
+    write_coverage_source,
+)
 from .verification_planning import generate_verification_plan
 from .workspace import ProjectWorkspace, WorkspaceManager
 
@@ -87,6 +98,10 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("--pattern", default=DEFAULT_PATTERN)
     crawl.add_argument("--refresh", action="store_true")
     crawl.add_argument("--retries", type=int, default=DEFAULT_RETRIES)
+    crawl.add_argument(
+        "--ref",
+        help="Git branch, tag, or commit. GitHub repositories only.",
+    )
 
     status = subparsers.add_parser("status", help="Show project status.")
     status.add_argument("project", nargs="?")
@@ -119,6 +134,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="protocol-overview",
     )
     extract.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Replace an existing generated research page.",
+    )
+    extract.add_argument(
         "--plan",
         action="store_true",
         help="Show source size and minimum provider-call estimate without AI.",
@@ -140,13 +160,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     market_data = subparsers.add_parser(
         "market-data",
-        help="Refresh optional address-matched CoinGecko token snapshots.",
+        help="Refresh exact-address CoinGecko supply data without AI.",
     )
     market_data.add_argument("project")
     market_data.add_argument(
         "--refresh",
         action="store_true",
-        help="Ignore snapshots cached within the last hour.",
+        help="Ignore supply data cached within the last day.",
     )
 
     ask = subparsers.add_parser(
@@ -163,6 +183,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Save the non-canonical answer under Analyst Reviews.",
     )
 
+    source = subparsers.add_parser(
+        "source",
+        help="Register, list, or collect categorized official sources.",
+    )
+    source.add_argument("action", choices=("add", "list", "crawl"))
+    source.add_argument("project")
+    source.add_argument("--category", choices=CATEGORIES)
+    source.add_argument("--url")
+    source.add_argument("--refresh", action="store_true")
+
     evaluate = subparsers.add_parser(
         "evaluate",
         help="Create human-reviewable evidence evaluation proposals.",
@@ -174,12 +204,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review.add_argument("project")
 
-    for name in ("verification-plan", "all"):
-        stage = subparsers.add_parser(
-            name,
-            help="Reserved unified workflow stage.",
-        )
-        stage.add_argument("project")
+    verification_plan = subparsers.add_parser(
+        "verification-plan",
+        help="Create or refresh the categorized verification checklist.",
+    )
+    verification_plan.add_argument("project")
+
+    complete = subparsers.add_parser(
+        "all",
+        help="Run or resume the complete research workflow.",
+    )
+    complete.add_argument("project")
+    complete.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Refresh sources and replace all generated research pages.",
+    )
 
     return parser
 
@@ -220,6 +260,7 @@ def main(
                 pattern=args.pattern,
                 refresh=args.refresh,
                 retries=args.retries,
+                ref=args.ref,
                 print_fn=print_fn,
             )
         if args.command == "status":
@@ -248,6 +289,7 @@ def main(
                 template_name=args.template,
                 mode=args.mode,
                 plan_only=args.plan,
+                refresh=args.refresh,
                 print_fn=print_fn,
             )
         if args.command == "registry":
@@ -273,6 +315,17 @@ def main(
                 save=args.save,
                 print_fn=print_fn,
             )
+        if args.command == "source":
+            workspace = manager.load_project(args.project)
+            return _source_command(
+                manager,
+                workspace,
+                action=args.action,
+                category=args.category,
+                url=args.url,
+                refresh=args.refresh,
+                print_fn=print_fn,
+            )
         if args.command == "verification-plan":
             workspace = manager.load_project(args.project)
             return _verification_plan(manager, workspace, print_fn)
@@ -289,7 +342,12 @@ def main(
             )
         if args.command == "all":
             workspace = manager.load_project(args.project)
-            return _unconfigured_stage(args.command, workspace, print_fn)
+            return _complete_workflow(
+                manager,
+                workspace,
+                refresh=args.refresh,
+                print_fn=print_fn,
+            )
     except (EOFError, KeyboardInterrupt):
         print_fn("\nCancelled.")
         return 1
@@ -322,17 +380,26 @@ def run_menu(
         print_fn("9. Review pending evaluations")
         print_fn("10. Configure or test AI provider")
         print_fn("11. View project status")
-        print_fn("12. Refresh token market data")
+        print_fn("12. Refresh current token supply data")
         print_fn("13. Explain a research-page entry")
-        print_fn("14. Exit")
-        choice = input_fn("Choice [1-14]: ").strip()
+        print_fn("14. Manage official sources")
+        print_fn("15. Exit")
+        choice = input_fn("Choice [1-15]: ").strip()
 
         try:
             if choice == "1":
                 _menu_create(manager, input_fn, print_fn)
             elif choice == "2":
                 workspace = _menu_project(manager, input_fn, print_fn)
-                _unconfigured_stage("all", workspace, print_fn)
+                _complete_workflow(
+                    manager,
+                    workspace,
+                    refresh=_yes_no(
+                        input_fn,
+                        "Refresh sources and existing research pages? [y/N]: ",
+                    ),
+                    print_fn=print_fn,
+                )
             elif choice == "3":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 docs_url = (
@@ -343,15 +410,13 @@ def run_menu(
                     manager,
                     workspace,
                     docs_url=str(docs_url),
-                    pattern=(
-                        input_fn(f"Sitemap pattern [{DEFAULT_PATTERN}]: ").strip()
-                        or DEFAULT_PATTERN
-                    ),
+                    pattern=_menu_crawl_pattern(input_fn, str(docs_url)),
                     refresh=_yes_no(
                         input_fn,
                         "Refresh existing source pages? [y/N]: ",
                     ),
                     retries=DEFAULT_RETRIES,
+                    ref=_menu_github_ref(input_fn, str(docs_url)),
                     print_fn=print_fn,
                 )
             elif choice == "4":
@@ -368,6 +433,7 @@ def run_menu(
                     workspace,
                     template_name=selected,
                     mode="auto",
+                    refresh=False,
                     print_fn=print_fn,
                 )
             elif choice in {"5", "6"}:
@@ -409,7 +475,7 @@ def run_menu(
                     workspace,
                     force=_yes_no(
                         input_fn,
-                        "Ignore snapshots cached within the last hour? [y/N]: ",
+                        "Ignore supply data cached within the last day? [y/N]: ",
                     ),
                     print_fn=print_fn,
                 )
@@ -422,10 +488,18 @@ def run_menu(
                     print_fn=print_fn,
                 )
             elif choice == "14":
+                workspace = _menu_project(manager, input_fn, print_fn)
+                _menu_sources(
+                    manager,
+                    workspace,
+                    input_fn=input_fn,
+                    print_fn=print_fn,
+                )
+            elif choice == "15":
                 print_fn("Goodbye.")
                 return 0
             else:
-                print_fn("Please enter a number from 1 to 14.")
+                print_fn("Please enter a number from 1 to 15.")
         except (OSError, RuntimeError, ValueError) as exc:
             print_fn(f"Stopped: {exc}")
 
@@ -484,30 +558,49 @@ def _crawl(
     pattern: str,
     refresh: bool,
     retries: int,
+    ref: str | None = None,
     print_fn: PrintFunction,
 ) -> int:
-    try:
-        from crawler.crawler import crawl_protocol
-    except ImportError as exc:
-        raise RuntimeError(
-            "Crawler dependencies are unavailable. Run "
-            "'pip install -r requirements.txt' and 'crawl4ai-setup'."
-        ) from exc
+    from crawler.github_importer import is_github_repository_url
 
     if workspace.document.get("docs_url") != docs_url:
         workspace = manager.set_docs_url(workspace, docs_url)
 
     try:
-        summary = asyncio.run(
-            crawl_protocol(
+        if is_github_repository_url(docs_url):
+            from crawler.github_importer import import_github_markdown
+
+            summary = import_github_markdown(
                 protocol_name=workspace.name,
-                docs_url=docs_url,
-                output_root=manager.root / "sources",
-                pattern=pattern,
+                repository_url=docs_url,
+                output_directory=workspace.sources_directory,
+                ref=ref,
                 refresh=refresh,
-                retries=retries,
             )
-        )
+            print_fn(
+                f"GitHub snapshot: {summary.commit_sha} "
+                f"({summary.discovered} Markdown files)"
+            )
+        else:
+            if ref:
+                raise ValueError("--ref can only be used with a GitHub repository.")
+            try:
+                from crawler.crawler import crawl_protocol
+            except ImportError as exc:
+                raise RuntimeError(
+                    "Crawler dependencies are unavailable. Run "
+                    "'pip install -r requirements.txt' and 'crawl4ai-setup'."
+                ) from exc
+            summary = asyncio.run(
+                crawl_protocol(
+                    protocol_name=workspace.name,
+                    docs_url=docs_url,
+                    output_root=manager.root / "sources",
+                    pattern=pattern,
+                    refresh=refresh,
+                    retries=retries,
+                )
+            )
     except Exception as exc:
         manager.update_stage(
             workspace,
@@ -518,6 +611,21 @@ def _crawl(
         raise
 
     status = "complete" if not summary.failed else "partial"
+    coverage = ensure_source_coverage(workspace)
+    for source in coverage.sources:
+        if source.url.casefold() == docs_url.strip().casefold():
+            update_source_status(
+                workspace,
+                source_id=source.source_id,
+                status="collected" if not summary.failed else "failed",
+                detail=(
+                    f"{summary.saved} saved, {summary.skipped} skipped, "
+                    f"{summary.failed} failed"
+                ),
+            )
+            break
+    write_coverage_source(workspace)
+    sync_research_coverage(workspace)
     manager.update_stage(
         workspace,
         "crawl",
@@ -562,6 +670,7 @@ def _extract(
     template_name: str,
     mode: str = "auto",
     plan_only: bool = False,
+    refresh: bool = False,
     print_fn: PrintFunction,
 ) -> int:
     if plan_only:
@@ -594,6 +703,7 @@ def _extract(
             provider=provider,
             prompts_root=PROJECT_ROOT / "prompts",
             mode=mode,
+            refresh=refresh,
             progress=print_fn,
         )
     except Exception as exc:
@@ -654,6 +764,154 @@ def _unconfigured_stage(
     return 2
 
 
+def _complete_workflow(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    refresh: bool,
+    print_fn: PrintFunction,
+) -> int:
+    """Run or resume the complete research workflow through verification."""
+
+    print_fn(f"Complete workflow: {workspace.name}")
+    print_fn("Existing generated outputs will be reused." if not refresh else
+             "Refresh enabled: sources and generated research will be rebuilt.")
+
+    source_pages = _collected_source_pages(workspace)
+    primary_pages = _collected_primary_source_pages(workspace)
+    docs_url = workspace.document.get("docs_url")
+    should_crawl = refresh or bool(docs_url and not primary_pages)
+    if should_crawl:
+        if not docs_url:
+            raise ValueError(
+                "The complete workflow needs a documentation URL or existing "
+                "collected source pages."
+            )
+        print_fn("")
+        print_fn("[1/5] Collecting primary documentation")
+        crawl_code = _crawl(
+            manager,
+            workspace,
+            docs_url=str(docs_url),
+            pattern=DEFAULT_PATTERN,
+            refresh=refresh,
+            retries=DEFAULT_RETRIES,
+            print_fn=print_fn,
+        )
+        if crawl_code:
+            raise RuntimeError(
+                "Primary documentation collection did not complete. Fix the "
+                "reported crawl failures, then rerun the complete workflow."
+            )
+        workspace = manager.load_project(workspace.slug)
+        source_pages = _collected_source_pages(workspace)
+    else:
+        print_fn("")
+        print_fn(
+            f"[1/5] Reusing {len(source_pages)} collected source pages"
+        )
+        manager.update_stage(
+            workspace,
+            "crawl",
+            "complete",
+            detail=f"Reused {len(source_pages)} collected source pages",
+        )
+        workspace = manager.load_project(workspace.slug)
+
+    if not source_pages:
+        raise RuntimeError(
+            "Documentation collection produced no usable Markdown sources."
+        )
+
+    print_fn("")
+    print_fn("[2/5] Generating research pages")
+    generated = 0
+    reused = 0
+    for template_name, filename in OUTPUT_FILES.items():
+        output_path = workspace.vault_entity_directory / filename
+        if output_path.exists() and not refresh:
+            reused += 1
+            print_fn(f"Reused research page: {filename}")
+            continue
+        _extract(
+            manager,
+            workspace,
+            template_name=template_name,
+            mode="auto",
+            refresh=refresh,
+            print_fn=print_fn,
+        )
+        generated += 1
+        workspace = manager.load_project(workspace.slug)
+    manager.update_stage(
+        workspace,
+        "research",
+        "complete",
+        detail=f"{generated} generated; {reused} reused",
+    )
+    workspace = manager.load_project(workspace.slug)
+
+    print_fn("")
+    print_fn("[3/5] Building registry and current supply data")
+    _registry(manager, workspace, print_fn)
+    workspace = manager.load_project(workspace.slug)
+
+    print_fn("")
+    print_fn("[4/5] Checking source coverage")
+    coverage = ensure_source_coverage(workspace)
+    for category in CATEGORIES:
+        print_fn(
+            f"- {CATEGORY_LABELS[category]}: "
+            f"{coverage.categories[category]}"
+        )
+    if coverage.status != "complete":
+        print_fn(
+            "Coverage is incomplete. Missing categories remain visible as "
+            "research limitations and do not block the usable analysis."
+        )
+
+    print_fn("")
+    verification_status = str(
+        workspace.document.get("verification_status", "not_requested")
+    )
+    if verification_status in {"not_requested", "unsupported"}:
+        print_fn(
+            "[5/5] Verification skipped by project configuration. "
+            "Research is ready for analysis without verification."
+        )
+    else:
+        print_fn("[5/5] Creating verification checklist")
+        _verification_plan(manager, workspace, print_fn)
+
+    print_fn("")
+    print_fn("Complete workflow finished.")
+    print_fn(f"Obsidian vault: {workspace.vault_root}")
+    return 0
+
+
+def _collected_source_pages(
+    workspace: ProjectWorkspace,
+) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in sorted(workspace.sources_directory.rglob("*.md"))
+        if path.name.casefold() != "_source_coverage.md"
+    )
+
+
+def _collected_primary_source_pages(
+    workspace: ProjectWorkspace,
+) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in _collected_source_pages(workspace)
+        if "_official" not in {
+            part.casefold()
+            for part in path.relative_to(workspace.sources_directory).parts
+        }
+    )
+
+
 def _registry(
     manager: WorkspaceManager,
     workspace: ProjectWorkspace,
@@ -661,7 +919,7 @@ def _registry(
 ) -> int:
     registry_path = workspace.registry_directory / "registry.json"
     provider = None
-    if not registry_path.exists():
+    if registry_needs_token_discovery(workspace):
         settings = SettingsManager(manager.root).load()
         provider = create_provider(settings["llm"])
     try:
@@ -678,14 +936,41 @@ def _registry(
         )
         raise
 
+    # Supply enrichment is deterministic and non-blocking. It runs after the
+    # registry during the normal workflow and remains separately refreshable.
+    try:
+        supply_result = refresh_market_data(workspace=workspace)
+        refresh_token_pages_from_registry(workspace)
+        available_supply = sum(
+            snapshot.status == "available"
+            for snapshot in supply_result.snapshots
+        )
+        print_fn(
+            "Current token supply data: "
+            f"{available_supply}/{len(supply_result.snapshots)} available "
+            "from CoinGecko"
+        )
+    except Exception as exc:
+        print_fn(
+            "Current token supply data was not collected; registry "
+            f"generation continues. Reason: {exc}"
+        )
+
+    coverage = ensure_source_coverage(workspace)
+    registry_status = (
+        "complete"
+        if coverage.categories["tokenomics"] == "collected"
+        else "partial"
+    )
     manager.update_stage(
         workspace,
         "registry",
-        "complete",
+        registry_status,
         detail=(
             f"{len(result.tokens)} native/protocol-issued tokens; "
             f"{len(result.addresses)} address records; "
-            f"{len(result.linked_pages)} linked research pages"
+            f"{len(result.linked_pages)} linked research pages; "
+            f"token source coverage: {coverage.categories['tokenomics']}"
         ),
     )
     print_fn(f"Registry: {result.registry_path}")
@@ -695,6 +980,11 @@ def _registry(
         print_fn(f"Contract registry: {result.address_page}")
     for path in result.token_pages:
         print_fn(f"Token page: {path}")
+    if coverage.categories["tokenomics"] != "collected":
+        print_fn(
+            "Registry is partial: token-source coverage is not collected, "
+            "so an empty token list is not a conclusion that no token exists."
+        )
     print_fn(f"Linked research pages: {len(result.linked_pages)}")
     return 0
 
@@ -712,7 +1002,7 @@ def _market_data(
     )
     unavailable = len(result.snapshots) - available
     print_fn(
-        "Market snapshots: "
+        "Current token supply data: "
         f"{available} available; {unavailable} unavailable; "
         f"{result.refreshed} refreshed; {result.reused} cached"
     )
@@ -720,7 +1010,8 @@ def _market_data(
         print_fn(f"Token page: {page}")
     if unavailable:
         print_fn(
-            "Unavailable entries remain visible and do not block other stages."
+            "Unavailable supply entries remain visible and do not block "
+            "other stages."
         )
     return 0
 
@@ -809,6 +1100,199 @@ def _menu_analyst_review(
     )
 
 
+def _source_command(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    action: str,
+    category: str | None,
+    url: str | None,
+    refresh: bool,
+    print_fn: PrintFunction,
+) -> int:
+    if action == "list":
+        summary = ensure_source_coverage(workspace)
+        print_fn(f"Overall source coverage: {summary.status}")
+        for key in CATEGORIES:
+            print_fn(
+                f"- {CATEGORY_LABELS[key]}: {summary.categories[key]}"
+            )
+            for source in (
+                item for item in summary.sources if item.category == key
+            ):
+                print_fn(
+                    f"  {source.source_id}: {source.status} — {source.url}"
+                )
+        return 0
+
+    if not category:
+        raise ValueError("--category is required for source add or crawl.")
+    if action == "add":
+        if not url:
+            raise ValueError("--url is required when adding a source.")
+        source = add_official_source(
+            workspace,
+            category=category,
+            url=url,
+        )
+        write_coverage_source(workspace)
+        sync_research_coverage(workspace)
+        print_fn(f"Official source registered: {source.source_id}")
+        print_fn(
+            "Run the source crawl action before this category is considered "
+            "collected."
+        )
+        return 0
+
+    sources = sources_for_category(workspace, category)
+    if not sources:
+        raise ValueError(
+            f"No official sources are registered for category {category}."
+        )
+    failures = 0
+    for source in sources:
+        try:
+            count = _crawl_official_source(
+                workspace,
+                source_id=source.source_id,
+                category=source.category,
+                url=source.url,
+                refresh=refresh,
+            )
+            update_source_status(
+                workspace,
+                source_id=source.source_id,
+                status="collected",
+                detail=f"{count} Markdown pages collected",
+            )
+            print_fn(
+                f"Collected {CATEGORY_LABELS[source.category]}: "
+                f"{count} Markdown pages"
+            )
+        except Exception as exc:
+            failures += 1
+            update_source_status(
+                workspace,
+                source_id=source.source_id,
+                status="failed",
+                detail=str(exc),
+            )
+            print_fn(f"Source failed: {source.url} — {exc}")
+    write_coverage_source(workspace)
+    sync_research_coverage(workspace)
+    summary = ensure_source_coverage(workspace)
+    manager.update_stage(
+        workspace,
+        "crawl",
+        "partial" if failures else "complete",
+        detail=f"Official source coverage: {summary.status}",
+    )
+    print_fn(f"Overall source coverage: {summary.status}")
+    return 2 if failures else 0
+
+
+def _crawl_official_source(
+    workspace: ProjectWorkspace,
+    *,
+    source_id: str,
+    category: str,
+    url: str,
+    refresh: bool,
+) -> int:
+    from crawler.github_importer import (
+        import_github_markdown,
+        is_github_repository_url,
+    )
+
+    destination_root = (
+        workspace.sources_directory / "_official" / category / source_id
+    )
+    if is_github_repository_url(url):
+        result = import_github_markdown(
+            protocol_name=workspace.name,
+            repository_url=url,
+            output_directory=destination_root,
+            refresh=refresh,
+        )
+        return result.discovered
+
+    try:
+        from crawler.crawler import crawl_protocol
+    except ImportError as exc:
+        raise RuntimeError(
+            "Crawler dependencies are unavailable. Run "
+            "'pip install -r requirements.txt' and 'crawl4ai-setup'."
+        ) from exc
+    result = asyncio.run(
+        crawl_protocol(
+            protocol_name=source_id,
+            docs_url=url,
+            output_root=destination_root.parent,
+            pattern=url,
+            refresh=refresh,
+            retries=DEFAULT_RETRIES,
+        )
+    )
+    if result.failed:
+        raise RuntimeError(
+            f"{result.failed} official-source pages failed to crawl."
+        )
+    return result.saved + result.skipped
+
+
+def _menu_sources(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    input_fn: InputFunction,
+    print_fn: PrintFunction,
+) -> None:
+    print_fn("1. View source coverage")
+    print_fn("2. Add an official source")
+    print_fn("3. Collect sources in a category")
+    action = _required(input_fn, "Source option [1-3]: ")
+    if action == "1":
+        _source_command(
+            manager,
+            workspace,
+            action="list",
+            category=None,
+            url=None,
+            refresh=False,
+            print_fn=print_fn,
+        )
+        return
+    if action not in {"2", "3"}:
+        raise ValueError("Please enter 1, 2, or 3.")
+    print_fn("Source categories:")
+    for index, key in enumerate(CATEGORIES, start=1):
+        print_fn(f"  {index}. {CATEGORY_LABELS[key]} ({key})")
+    selected = _required(input_fn, "Category name or number: ")
+    if selected.isdigit() and 1 <= int(selected) <= len(CATEGORIES):
+        selected = CATEGORIES[int(selected) - 1]
+    if action == "2":
+        url = _required(input_fn, "Official source URL: ")
+        _source_command(
+            manager,
+            workspace,
+            action="add",
+            category=selected,
+            url=url,
+            refresh=False,
+            print_fn=print_fn,
+        )
+        return
+    _source_command(
+        manager,
+        workspace,
+        action="crawl",
+        category=selected,
+        url=None,
+        refresh=_yes_no(input_fn, "Refresh collected sources? [y/N]: "),
+        print_fn=print_fn,
+    )
+
+
 def _verification_plan(
     manager: WorkspaceManager,
     workspace: ProjectWorkspace,
@@ -854,6 +1338,10 @@ def _verification_plan(
             f"{links.inserted_links} verification links; "
             f"{len(links.unresolved_mappings)} unresolved mappings"
         ),
+    )
+    workspace = manager.set_verification_status(
+        workspace,
+        "pending" if result.ready_requests else "manual_review",
     )
     print_fn(f"Verification page: {result.page_path}")
     if result.job_path:
@@ -1075,6 +1563,36 @@ def _required(input_fn: InputFunction, prompt: str) -> str:
     if not value:
         raise ValueError("A value is required.")
     return value
+
+
+def _menu_crawl_pattern(
+    input_fn: InputFunction,
+    docs_url: str,
+) -> str:
+    from crawler.github_importer import is_github_repository_url
+
+    if is_github_repository_url(docs_url):
+        return DEFAULT_PATTERN
+    return (
+        input_fn(f"Sitemap pattern [{DEFAULT_PATTERN}]: ").strip()
+        or DEFAULT_PATTERN
+    )
+
+
+def _menu_github_ref(
+    input_fn: InputFunction,
+    docs_url: str,
+) -> str | None:
+    from crawler.github_importer import is_github_repository_url
+
+    if not is_github_repository_url(docs_url):
+        return None
+    return (
+        input_fn(
+            "Git branch, tag, or commit (leave blank for default branch): "
+        ).strip()
+        or None
+    )
 
 
 def _yes_no(input_fn: InputFunction, prompt: str) -> bool:

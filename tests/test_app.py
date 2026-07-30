@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from definalyzer.app import main
+from definalyzer.app import OUTPUT_FILES, main
 from definalyzer.providers import ProviderResponse
 from definalyzer.workspace import WorkspaceManager
 
@@ -54,7 +54,7 @@ class UnifiedAppTests(unittest.TestCase):
                         "",
                         "",
                         "n",
-                        "14",
+                        "15",
                     ]
                 ),
                 print_fn=messages.append,
@@ -67,21 +67,83 @@ class UnifiedAppTests(unittest.TestCase):
         self.assertEqual(project.name, "Menu Project")
         self.assertTrue(any("Obsidian folder" in item for item in messages))
 
-    def test_unconfigured_complete_workflow_is_explicit(self):
+    @patch("definalyzer.app._registry", return_value=0)
+    @patch("definalyzer.app._extract")
+    @patch("definalyzer.app._crawl")
+    def test_complete_workflow_reuses_existing_sources_and_pages(
+        self,
+        crawl,
+        extract,
+        registry,
+    ):
         messages = []
 
         with tempfile.TemporaryDirectory() as directory:
-            workspace = str(Path(directory) / "output")
-            main(["--workspace", workspace, "init", "Example"])
+            workspace_root = Path(directory) / "output"
+            manager = WorkspaceManager(workspace_root)
+            project = manager.create_project(name="Example")
+            (project.sources_directory / "source.md").write_text(
+                "# Source",
+                encoding="utf-8",
+            )
+            for filename in OUTPUT_FILES.values():
+                (project.vault_entity_directory / filename).write_text(
+                    "# Generated",
+                    encoding="utf-8",
+                )
             exit_code = main(
-                ["--workspace", workspace, "all", "example"],
+                ["--workspace", str(workspace_root), "all", "example"],
                 print_fn=messages.append,
             )
 
-        self.assertEqual(exit_code, 2)
-        self.assertTrue(
-            any("has not been connected yet" in item for item in messages)
-        )
+        self.assertEqual(exit_code, 0)
+        crawl.assert_not_called()
+        extract.assert_not_called()
+        registry.assert_called_once()
+        self.assertTrue(any("Complete workflow finished" in item for item in messages))
+
+    @patch("definalyzer.app._verification_plan", return_value=2)
+    @patch("definalyzer.app._registry", return_value=0)
+    @patch("definalyzer.app._extract")
+    def test_complete_workflow_generates_missing_pages_in_template_order(
+        self,
+        extract,
+        registry,
+        verification_plan,
+    ):
+        calls = []
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace_root = Path(directory) / "output"
+            manager = WorkspaceManager(workspace_root)
+            project = manager.create_project(
+                name="Ordered",
+                verification_status="pending",
+            )
+            (project.sources_directory / "source.md").write_text(
+                "# Source",
+                encoding="utf-8",
+            )
+
+            def generate(manager_arg, workspace_arg, **kwargs):
+                template = kwargs["template_name"]
+                calls.append(template)
+                filename = OUTPUT_FILES[template]
+                (workspace_arg.vault_entity_directory / filename).write_text(
+                    f"# {template}",
+                    encoding="utf-8",
+                )
+                return 0
+
+            extract.side_effect = generate
+            exit_code = main(
+                ["--workspace", str(workspace_root), "all", project.slug],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls, list(OUTPUT_FILES))
+        registry.assert_called_once()
+        verification_plan.assert_called_once()
 
     @patch("definalyzer.app.run_collector_menu", return_value=0)
     def test_collect_uses_existing_collector_and_updates_stage(self, collector):
@@ -261,6 +323,88 @@ class UnifiedAppTests(unittest.TestCase):
         self.assertTrue(
             any("A concise scoped explanation." in item for item in messages)
         )
+
+    @patch("crawler.github_importer.import_github_markdown")
+    def test_crawl_routes_repository_url_to_github_importer(self, importer):
+        importer.return_value = SimpleNamespace(
+            commit_sha="a" * 40,
+            discovered=12,
+            saved=12,
+            skipped=0,
+            failed=0,
+        )
+        messages = []
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace_root = Path(directory) / "output"
+            manager = WorkspaceManager(workspace_root)
+            project = manager.create_project(
+                name="Repository Project",
+                docs_url="https://github.com/example/public-docs",
+            )
+            exit_code = main(
+                [
+                    "--workspace",
+                    str(workspace_root),
+                    "crawl",
+                    project.slug,
+                    "--ref",
+                    "main",
+                ],
+                print_fn=messages.append,
+            )
+            updated = manager.load_project(project.slug)
+
+        self.assertEqual(exit_code, 0)
+        importer.assert_called_once_with(
+            protocol_name="Repository Project",
+            repository_url="https://github.com/example/public-docs",
+            output_directory=project.sources_directory,
+            ref="main",
+            refresh=False,
+        )
+        self.assertEqual(
+            updated.document["stages"]["crawl"]["status"],
+            "complete",
+        )
+        self.assertTrue(any("GitHub snapshot" in item for item in messages))
+
+    def test_source_command_registers_and_lists_official_source(self):
+        messages = []
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace_root = Path(directory) / "output"
+            manager = WorkspaceManager(workspace_root)
+            project = manager.create_project(name="Coverage Project")
+            added = main(
+                [
+                    "--workspace",
+                    str(workspace_root),
+                    "source",
+                    "add",
+                    project.slug,
+                    "--category",
+                    "tokenomics",
+                    "--url",
+                    "https://example.test/token",
+                ],
+                print_fn=messages.append,
+            )
+            listed = main(
+                [
+                    "--workspace",
+                    str(workspace_root),
+                    "source",
+                    "list",
+                    project.slug,
+                ],
+                print_fn=messages.append,
+            )
+
+        self.assertEqual(added, 0)
+        self.assertEqual(listed, 0)
+        self.assertTrue(any("tokenomics-token" in item for item in messages))
+        self.assertTrue(any("Token and tokenomics: registered" in item for item in messages))
 
 
 if __name__ == "__main__":

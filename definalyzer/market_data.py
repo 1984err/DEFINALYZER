@@ -1,7 +1,7 @@
-"""Optional third-party token market snapshots.
+"""Deterministic third-party token supply snapshots.
 
-Market data is matched by network and contract address. It is deliberately
-stored separately from documented research facts and raw on-chain evidence.
+Data is matched by exact contract or mint address and stored separately from
+documented research facts and raw on-chain evidence.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from .workspace import ProjectWorkspace
 
 
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
-CACHE_MAX_AGE = timedelta(hours=1)
+CACHE_MAX_AGE = timedelta(days=1)
 PLATFORM_IDS = {
     "arbitrum": "arbitrum-one",
     "arbitrum one": "arbitrum-one",
@@ -42,15 +42,10 @@ class MarketSnapshot:
     coin_id: str | None
     matched_name: str | None
     matched_symbol: str | None
-    price_usd: float | int | None
-    market_cap_usd: float | int | None
     fully_diluted_valuation_usd: float | int | None
-    volume_24h_usd: float | int | None
-    price_change_24h_percent: float | int | None
     circulating_supply: float | int | None
     total_supply: float | int | None
     max_supply: float | int | None
-    market_cap_rank: int | None
     provider_updated_at: str | None
     collected_at: str
     source_url: str | None
@@ -64,7 +59,7 @@ class MarketRefreshResult:
     reused: int
 
 
-JsonFetcher = Callable[[str], dict[str, Any]]
+JsonFetcher = Callable[[str], Any]
 SleepFunction = Callable[[float], None]
 
 
@@ -96,6 +91,8 @@ def refresh_market_data(
     snapshots: list[MarketSnapshot] = []
     refreshed = 0
     reused = 0
+    coin_list: Any = None
+    coin_list_loaded = False
 
     for token in tokens:
         if not isinstance(token, dict):
@@ -111,7 +108,30 @@ def refresh_market_data(
             continue
 
         network, address = _select_contract(token, addresses)
+        if network and network.casefold() == "not documented":
+            network = None
         platform_id = PLATFORM_IDS.get(network.casefold()) if network else None
+        discovery_detail = None
+        if address and not platform_id:
+            try:
+                if not coin_list_loaded:
+                    coin_list = fetcher(
+                        f"{COINGECKO_BASE_URL}/coins/list"
+                        "?include_platform=true"
+                    )
+                    coin_list_loaded = True
+                match = _match_platform_by_address(coin_list, address)
+                if match:
+                    platform_id, matched_network = match
+                    network = network or matched_network
+                else:
+                    discovery_detail = (
+                        "CoinGecko did not return one unambiguous platform "
+                        "match for the exact contract or mint address."
+                    )
+            except (HTTPError, OSError, TimeoutError, ValueError) as exc:
+                discovery_detail = _safe_error(exc)
+
         if not platform_id or not address:
             snapshot = _unavailable_snapshot(
                 symbol=symbol,
@@ -120,8 +140,9 @@ def refresh_market_data(
                 platform_id=platform_id,
                 collected_at=current,
                 detail=(
-                    "No supported network and documented contract address "
-                    "were available for address-based matching."
+                    discovery_detail
+                    or "No documented contract or mint address was available "
+                    "for exact-address matching."
                 ),
             )
         else:
@@ -209,11 +230,7 @@ def _select_contract(
 
     token_network = str(token.get("network") or "").strip()
     token_address = str(token.get("address") or "").strip()
-    if (
-        token_network.casefold() in PLATFORM_IDS
-        and token_address
-        and token_address.casefold() != "not documented"
-    ):
+    if token_address and token_address.casefold() != "not documented":
         candidates.append((token_network, token_address))
 
     def priority(item: tuple[str, str]) -> tuple[int, str]:
@@ -225,6 +242,41 @@ def _select_contract(
         return rank, item[1].casefold()
 
     return min(candidates, key=priority) if candidates else (None, None)
+
+
+def _match_platform_by_address(
+    document: Any,
+    address: str,
+) -> tuple[str, str] | None:
+    if not isinstance(document, list):
+        raise ValueError("CoinGecko coin list returned a non-list response.")
+    target = address.casefold()
+    matches: set[str] = set()
+    for coin in document:
+        if not isinstance(coin, dict):
+            continue
+        platforms = coin.get("platforms")
+        if not isinstance(platforms, dict):
+            continue
+        for platform_id, candidate in platforms.items():
+            if (
+                isinstance(platform_id, str)
+                and isinstance(candidate, str)
+                and candidate.strip().casefold() == target
+            ):
+                matches.add(platform_id)
+    if len(matches) != 1:
+        return None
+    platform_id = next(iter(matches))
+    network = next(
+        (
+            label
+            for label, configured_id in PLATFORM_IDS.items()
+            if configured_id == platform_id and label != "arbitrum one"
+        ),
+        platform_id,
+    )
+    return platform_id, network.title()
 
 
 def _snapshot_from_response(
@@ -253,19 +305,12 @@ def _snapshot_from_response(
         coin_id=_optional_text(document.get("id")),
         matched_name=_optional_text(document.get("name")),
         matched_symbol=_optional_text(document.get("symbol")),
-        price_usd=_nested_number(market, "current_price", "usd"),
-        market_cap_usd=_nested_number(market, "market_cap", "usd"),
         fully_diluted_valuation_usd=_nested_number(
             market, "fully_diluted_valuation", "usd"
-        ),
-        volume_24h_usd=_nested_number(market, "total_volume", "usd"),
-        price_change_24h_percent=_number(
-            market.get("price_change_percentage_24h")
         ),
         circulating_supply=_number(market.get("circulating_supply")),
         total_supply=_number(market.get("total_supply")),
         max_supply=_number(market.get("max_supply")),
-        market_cap_rank=_integer(document.get("market_cap_rank")),
         provider_updated_at=_optional_text(
             document.get("last_updated") or market.get("last_updated")
         ),
@@ -295,15 +340,10 @@ def _unavailable_snapshot(
         coin_id=None,
         matched_name=None,
         matched_symbol=None,
-        price_usd=None,
-        market_cap_usd=None,
         fully_diluted_valuation_usd=None,
-        volume_24h_usd=None,
-        price_change_24h_percent=None,
         circulating_supply=None,
         total_supply=None,
         max_supply=None,
-        market_cap_rank=None,
         provider_updated_at=None,
         collected_at=collected_at.isoformat(timespec="seconds"),
         source_url=source_url,
@@ -316,7 +356,7 @@ def _fetch_json_with_backoff(
     *,
     sleep: SleepFunction,
     attempts: int = 3,
-) -> dict[str, Any]:
+) -> Any:
     request = Request(
         url,
         headers={

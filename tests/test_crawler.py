@@ -1,9 +1,25 @@
 import unittest
 
-from crawler.discovery import direct_url_for_domain, matching_internal_urls
+from crawler.discovery import (
+    direct_url_for_domain,
+    is_research_documentation_url,
+    matching_internal_urls,
+)
 
 
 class CrawlerDiscoveryTests(unittest.TestCase):
+    def test_excludes_endpoint_api_catalogs_but_keeps_conceptual_docs(self):
+        self.assertFalse(
+            is_research_documentation_url(
+                "https://docs.example.test/api/markets/get-market"
+            )
+        )
+        self.assertTrue(
+            is_research_documentation_url(
+                "https://docs.example.test/developers/api/integration"
+            )
+        )
+
     def test_exact_page_url_bypasses_sitemap_discovery(self):
         page = "https://aave.com/docs/aave-v3/overview"
         self.assertEqual(direct_url_for_domain("aave.com", page), page)

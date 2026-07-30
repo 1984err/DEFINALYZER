@@ -16,7 +16,11 @@ from crawl4ai import (
     CrawlerRunConfig,
     SeedingConfig,
 )
-from crawler.discovery import direct_url_for_domain, matching_internal_urls
+from crawler.discovery import (
+    direct_url_for_domain,
+    is_research_documentation_url,
+    matching_internal_urls,
+)
 
 
 DEFAULT_OUTPUT_ROOT = Path(__file__).resolve().parent / "output"
@@ -184,7 +188,9 @@ async def discover_urls(
     }
 
     if discovered or not seed_url:
-        return sorted(discovered)
+        return sorted(
+            url for url in discovered if is_research_documentation_url(url)
+        )
 
     crawl_config = CrawlerRunConfig(only_text=True, word_count_threshold=1)
     async with AsyncWebCrawler() as crawler:
@@ -194,12 +200,16 @@ async def discover_urls(
 
     links = getattr(result, "links", {})
     internal = links.get("internal", []) if isinstance(links, dict) else []
-    return matching_internal_urls(
-        domain=domain,
-        pattern=pattern,
-        links=internal,
-        seed_url=seed_url,
-    )
+    return [
+        url
+        for url in matching_internal_urls(
+            domain=domain,
+            pattern=pattern,
+            links=internal,
+            seed_url=seed_url,
+        )
+        if is_research_documentation_url(url)
+    ]
 
 
 async def crawl_page(

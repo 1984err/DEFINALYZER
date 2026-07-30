@@ -5,18 +5,39 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from .providers import TextProvider
+from .source_coverage import (
+    coverage_markdown,
+    ensure_source_coverage,
+    source_inventory_markdown,
+)
 from .workspace import ProjectWorkspace
 
 
 MAX_SINGLE_PASS_SOURCE_CHARACTERS = 300_000
 MAX_PROVIDER_PROMPT_CHARACTERS = 26_000
 EXTRACTION_STATE_VERSION = 1
+FINAL_CONSOLIDATION_INSTRUCTIONS = """
+# Final Consolidation Standard
+
+Produce a compact analyst reference, not a narrative report or an exhaustive
+documentation index. Merge entries that describe the same mechanism,
+authority, dependency, or failure condition. Summarize implementation
+variants in one row unless a variant changes asset exposure, decision
+authority, value capture, or a material failure outcome. Do not enumerate
+individual functions, parameters, integrations, audits, or deployment
+instances when their investment-relevant effect is the same.
+
+Prefer a page under 10,000 characters. Exceed that target only when shortening
+it would omit a distinct material mechanism, authority, economic exposure, or
+failure condition. Never omit such a fact merely to meet the target.
+""".strip()
 TEMPLATE_FILES = {
     "protocol-overview": "template_protocol_overview.md",
     "architecture": "template_architecture.md",
@@ -49,12 +70,37 @@ EXPECTED_HEADINGS = {
 }
 RESEARCH_CATEGORIES = tuple(TEMPLATE_FILES)
 NON_RESEARCH_DIRECTORIES = {
+    ".github",
+    "api",
+    "api-reference",
     "brand-guidelines",
     "terms-of-service",
 }
+NON_RESEARCH_DIRECTORY_PREFIXES = (
+    "example",
+    "guide",
+    "how-to",
+    "quickstart",
+    "tutorial",
+)
+NON_RESEARCH_TOOL_DIRECTORIES = {
+    "agents",
+    "cli",
+    "sdk",
+    "sdks",
+}
 NON_RESEARCH_FILENAMES = {
+    "_source_coverage.md",
+    "addresses.md",
+    "customer-stories.md",
     "media-coverage.md",
     "privacy-policy.md",
+}
+RESEARCH_DEVELOPER_DIRECTORIES = {
+    "architecture",
+    "audits",
+    "contracts",
+    "security",
 }
 
 
@@ -180,7 +226,7 @@ def load_source_bundle(
     character_count = 0
 
     for path in files:
-        text = path.read_text(encoding="utf-8")
+        text = _prepare_research_source(path, source_root)
         relative = path.relative_to(source_root).as_posix()
         section = (
             f"\n\n--- SOURCE FILE: {relative} ---\n\n"
@@ -248,9 +294,8 @@ def split_source_chunks(
     source_characters = 0
     for path in files:
         relative = path.relative_to(source_root).as_posix()
-        raw_text = path.read_text(encoding="utf-8").rstrip()
-        source_characters += len(raw_text)
-        text = _remove_fenced_code(raw_text)
+        text = _prepare_research_source(path, source_root)
+        source_characters += len(text)
         prefix = f"--- SOURCE FILE: {relative} ---\n\n"
         available = maximum_characters - len(prefix)
         if available <= 0:
@@ -298,21 +343,57 @@ def split_source_chunks(
     return tuple(chunks), files, source_characters
 
 
-def _research_source_files(source_root: Path) -> tuple[Path, ...]:
+def research_source_files(source_root: Path) -> tuple[Path, ...]:
     """Select research-bearing pages while retaining every local crawl file."""
     selected = []
-    for path in sorted(source_root.rglob("*.md")):
+    for path in sorted(source_root.rglob("*")):
         if not path.is_file():
+            continue
+        if path.suffix.casefold() not in {".md", ".markdown"}:
             continue
         relative = path.relative_to(source_root)
         parts = {part.casefold() for part in relative.parts[:-1]}
         filename = relative.name.casefold()
         if parts & NON_RESEARCH_DIRECTORIES:
             continue
+        if parts & NON_RESEARCH_TOOL_DIRECTORIES:
+            continue
+        if any(
+            part.startswith(prefix)
+            for part in parts
+            for prefix in NON_RESEARCH_DIRECTORY_PREFIXES
+        ):
+            continue
         if filename in NON_RESEARCH_FILENAMES:
             continue
         selected.append(path)
+    nondeveloper = [
+        path
+        for path in selected
+        if path.relative_to(source_root).parts[0].casefold()
+        not in {"developer", "developers"}
+    ]
+    if len(nondeveloper) >= 3:
+        selected = [
+            path
+            for path in selected
+            if _keep_developer_source(path, source_root)
+        ]
     return tuple(selected)
+
+
+# Kept as a private alias for existing internal callers.
+_research_source_files = research_source_files
+
+
+def _keep_developer_source(path: Path, source_root: Path) -> bool:
+    parts = tuple(
+        part.casefold()
+        for part in path.relative_to(source_root).parts[:-1]
+    )
+    if not parts or parts[0] not in {"developer", "developers"}:
+        return True
+    return bool(set(parts[1:]) & RESEARCH_DEVELOPER_DIRECTORIES)
 
 
 def extract_research_page_chunked(
@@ -323,6 +404,7 @@ def extract_research_page_chunked(
     prompts_root: str | Path,
     maximum_prompt_characters: int = MAX_PROVIDER_PROMPT_CHARACTERS,
     progress: Callable[[str], None] | None = None,
+    refresh: bool = False,
 ) -> ExtractionResult:
     """Extract all sources through resumable fact ledgers and consolidation."""
     if template_name not in TEMPLATE_FILES:
@@ -342,7 +424,7 @@ def extract_research_page_chunked(
     output_path = (
         workspace.vault_entity_directory / OUTPUT_FILES[template_name]
     )
-    if output_path.exists():
+    if output_path.exists() and not refresh:
         raise FileExistsError(
             "Research page already exists and will not be overwritten: "
             f"{output_path}"
@@ -386,6 +468,7 @@ def extract_research_page_chunked(
         template_name="shared-research",
         fingerprint=fingerprint,
         chunks=chunks,
+        refresh=refresh,
     )
 
     provider_calls = 0
@@ -477,11 +560,20 @@ def extract_research_page_chunked(
         master_prompt=master,
         template=template,
         source_bundle=(
+            FINAL_CONSOLIDATION_INSTRUCTIONS
+            + "\n\n"
             "# Extracted Fact Ledgers\n\n"
             "The following ledgers were extracted only from the crawled "
             "documentation. Consolidate them into the required page. "
             "Deduplicate facts and preserve source-file references only when "
             "the output template requests provenance.\n\n"
+            "Use the following coverage metadata to qualify all absence "
+            "claims. Missing coverage means a topic was not assessed; it does "
+            "not prove that a feature or asset does not exist.\n\n"
+            + coverage_markdown(workspace)
+            + "\n\n"
+            + source_inventory_markdown(workspace)
+            + "\n\n"
             + reduced
         ),
     )
@@ -495,16 +587,17 @@ def extract_research_page_chunked(
         response.text,
         expected_heading=EXPECTED_HEADINGS[template_name],
     )
-    document = _frontmatter(workspace, response.provider) + body.rstrip() + "\n"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with output_path.open("x", encoding="utf-8", newline="\n") as file:
-            file.write(document)
-    except FileExistsError as exc:
-        raise FileExistsError(
-            "Research page already exists and will not be overwritten: "
-            f"{output_path}"
-        ) from exc
+    document = _research_document(
+        workspace,
+        response.provider,
+        body,
+    )
+    _write_research_output(
+        output_path,
+        document,
+        workspace=workspace,
+        refresh=refresh,
+    )
 
     state["status"] = "complete"
     outputs = dict(state.get("outputs", {}))
@@ -532,6 +625,7 @@ def extract_research_page(
     mode: str = "auto",
     maximum_prompt_characters: int = MAX_PROVIDER_PROMPT_CHARACTERS,
     progress: Callable[[str], None] | None = None,
+    refresh: bool = False,
 ) -> ExtractionResult:
     if mode not in {"auto", "single", "chunked"}:
         raise ValueError("Extraction mode must be auto, single, or chunked.")
@@ -543,6 +637,7 @@ def extract_research_page(
             prompts_root=prompts_root,
             maximum_prompt_characters=maximum_prompt_characters,
             progress=progress,
+            refresh=refresh,
         )
     if template_name not in TEMPLATE_FILES:
         supported = ", ".join(sorted(TEMPLATE_FILES))
@@ -569,12 +664,21 @@ def extract_research_page(
                 prompts_root=prompts_root,
                 maximum_prompt_characters=maximum_prompt_characters,
                 progress=progress,
+                refresh=refresh,
             )
         raise
     prompt = build_extraction_prompt(
         master_prompt=master,
         template=template,
-        source_bundle=source_bundle,
+        source_bundle=(
+            "# Source Coverage Instructions\n\n"
+            "Use this metadata to qualify absence claims. Missing coverage "
+            "means a topic was not assessed; it does not prove that a feature "
+            "or asset does not exist.\n\n"
+            f"{coverage_markdown(workspace)}\n\n"
+            f"{source_inventory_markdown(workspace)}\n\n"
+            f"{source_bundle}"
+        ),
     )
     if len(prompt) > maximum_prompt_characters:
         if mode == "auto":
@@ -585,6 +689,7 @@ def extract_research_page(
                 prompts_root=prompts_root,
                 maximum_prompt_characters=maximum_prompt_characters,
                 progress=progress,
+                refresh=refresh,
             )
         raise ValueError(
             "Extraction prompt exceeds the configured single-pass limit; "
@@ -594,7 +699,7 @@ def extract_research_page(
         workspace.vault_entity_directory / OUTPUT_FILES[template_name]
     )
 
-    if output_path.exists():
+    if output_path.exists() and not refresh:
         raise FileExistsError(
             f"Research page already exists and will not be overwritten: "
             f"{output_path}"
@@ -608,17 +713,17 @@ def extract_research_page(
         response.text,
         expected_heading=EXPECTED_HEADINGS[template_name],
     )
-    document = _frontmatter(workspace, response.provider) + body.rstrip() + "\n"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with output_path.open("x", encoding="utf-8", newline="\n") as file:
-            file.write(document)
-    except FileExistsError as exc:
-        raise FileExistsError(
-            f"Research page already exists and will not be overwritten: "
-            f"{output_path}"
-        ) from exc
+    document = _research_document(
+        workspace,
+        response.provider,
+        body,
+    )
+    _write_research_output(
+        output_path,
+        document,
+        workspace=workspace,
+        refresh=refresh,
+    )
 
     return ExtractionResult(
         template=template_name,
@@ -864,12 +969,32 @@ def _remove_fenced_code(text: str) -> str:
     ).strip()
 
 
+def _prepare_research_source(path: Path, source_root: Path) -> str:
+    """Remove implementation bulk while preserving research-bearing context."""
+
+    text = _remove_fenced_code(path.read_text(encoding="utf-8").rstrip())
+    relative_parts = {
+        part.casefold()
+        for part in path.relative_to(source_root).parts[:-1]
+    }
+    if "contracts" in relative_parts:
+        match = re.search(
+            r"(?mi)^##\s+\[?(?:External Functions|View Functions|Functions|"
+            r"Events|Errors)\b",
+            text,
+        )
+        if match:
+            text = text[: match.start()].rstrip()
+    return text
+
+
 def _load_or_initialize_state(
     path: Path,
     *,
     template_name: str,
     fingerprint: str,
     chunks: tuple[SourceChunk, ...],
+    refresh: bool = False,
 ) -> dict[str, Any]:
     if path.exists():
         try:
@@ -884,6 +1009,34 @@ def _load_or_initialize_state(
                 f"Chunk state is incompatible and must be removed: {path}"
             )
         if state.get("source_fingerprint") != fingerprint:
+            if refresh:
+                run_directory = path.parent.resolve()
+                expected = (
+                    path.parents[2] / "extraction" / "shared-research"
+                ).resolve()
+                if run_directory != expected:
+                    raise ValueError(
+                        "Refusing to refresh an unexpected extraction path: "
+                        f"{run_directory}"
+                    )
+                shutil.rmtree(run_directory)
+                (run_directory / "ledgers").mkdir(parents=True)
+                state = {
+                    "schema_version": EXTRACTION_STATE_VERSION,
+                    "template": template_name,
+                    "source_fingerprint": fingerprint,
+                    "status": "in_progress",
+                    "chunks": {
+                        chunk.identifier: {
+                            "source_files": list(chunk.source_files),
+                            "source_digest": chunk.digest,
+                            "status": "pending",
+                        }
+                        for chunk in chunks
+                    },
+                }
+                _write_json(path, state)
+                return state
             raise ValueError(
                 "Crawled sources or prompts changed after chunk extraction "
                 f"started. Remove the stale intermediate folder: {path.parent}"
@@ -920,7 +1073,29 @@ def _validate_ledger(text: str) -> str:
         raise ValueError(
             "The provider wrapped the complete fact ledger in a code fence."
         )
-    return output
+    return normalize_markdown_spacing(output)
+
+
+def normalize_markdown_spacing(text: str) -> str:
+    """Ensure headings and tables form separate Obsidian Markdown blocks."""
+    normalized: list[str] = []
+    for line in text.splitlines():
+        is_table = line.startswith("|") and line.endswith("|")
+        previous_is_table = bool(
+            normalized
+            and normalized[-1].startswith("|")
+            and normalized[-1].endswith("|")
+        )
+        if is_table and normalized and normalized[-1].strip() and not previous_is_table:
+            normalized.append("")
+        if (
+            normalized
+            and re.match(r"^#{1,6}\s+\S", normalized[-1])
+            and line.strip()
+        ):
+            normalized.append("")
+        normalized.append(line)
+    return "\n".join(normalized).strip()
 
 
 def _validate_shared_ledger(text: str) -> str:
@@ -986,6 +1161,41 @@ def _replace_text(path: Path, text: str) -> None:
     temporary.replace(path)
 
 
+def _write_research_output(
+    path: Path,
+    text: str,
+    *,
+    workspace: ProjectWorkspace,
+    refresh: bool,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if not refresh:
+            raise FileExistsError(
+                "Research page already exists and will not be overwritten: "
+                f"{path}"
+            )
+        existing = path.read_text(encoding="utf-8")
+        if (
+            "extraction_provider:" not in existing
+            or f'entity: "{workspace.name}"' not in existing
+        ):
+            raise FileExistsError(
+                "Refresh refused to replace a page that was not generated "
+                f"for this project: {path}"
+            )
+        _replace_text(path, text)
+        return
+    try:
+        with path.open("x", encoding="utf-8", newline="\n") as file:
+            file.write(text)
+    except FileExistsError as exc:
+        raise FileExistsError(
+            "Research page appeared during generation and was not "
+            f"overwritten: {path}"
+        ) from exc
+
+
 def _write_json(path: Path, document: dict[str, Any]) -> None:
     _replace_text(path, json.dumps(document, indent=2) + "\n")
 
@@ -1007,6 +1217,19 @@ def validate_extraction_output(text: str, *, expected_heading: str) -> str:
         raise ValueError(
             "The provider wrapped the complete research page in a code fence."
         )
+    if expected_heading == "# Tokenomics":
+        forbidden = (
+            r"(?mi)^## Supply\s*$",
+            r"(?mi)^\|\s*(?:Current(?:/circulating)? supply(?: date)?|"
+            r"Circulating supply|Total supply|Maximum supply|Initial supply)"
+            r"\s*\|",
+        )
+        if any(re.search(pattern, output) for pattern in forbidden):
+            raise ValueError(
+                "Tokenomics output contains snapshot supply statistics. "
+                "Current circulating, total, initial, and maximum supply "
+                "belong only on the deterministic token index."
+            )
 
     return output
 
@@ -1016,12 +1239,28 @@ def _frontmatter(
     provider: str,
 ) -> str:
     extracted_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    coverage = ensure_source_coverage(workspace)
     return (
         "---\n"
         f'entity: "{workspace.name}"\n'
         f'entity_type: "{workspace.document["entity_type"]}"\n'
         f'verification_status: "{workspace.document["verification_status"]}"\n'
         f'extraction_provider: "{provider}"\n'
+        f'source_coverage: "{coverage.status}"\n'
         f'extracted_at: "{extracted_at}"\n'
         "---\n\n"
+    )
+
+
+def _research_document(
+    workspace: ProjectWorkspace,
+    provider: str,
+    body: str,
+) -> str:
+    return (
+        _frontmatter(workspace, provider)
+        + body.rstrip()
+        + "\n\n"
+        + coverage_markdown(workspace).rstrip()
+        + "\n"
     )

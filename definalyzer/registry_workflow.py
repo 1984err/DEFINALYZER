@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -10,8 +11,13 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.request import Request, urlopen
 
+from .extraction import research_source_files
 from .market_data import MarketSnapshot, load_market_snapshot
 from .providers import TextProvider
+from .source_coverage import (
+    ensure_source_coverage,
+    token_coverage_complete,
+)
 from .workspace import ProjectWorkspace
 
 
@@ -24,8 +30,18 @@ TOKEN_SCOPE = (
     "Include only the protocol's native/governance token and tokens issued by "
     "the protocol with their own material economics. Exclude reserve assets, "
     "collateral assets, external dependencies, generic reward assets, aTokens, "
-    "debt tokens, vault shares, wrappers, and receipt tokens."
+    "debt tokens, vault shares, wrappers, receipt tokens, LP tokens, and "
+    "assets created by protocol users."
 )
+PLACEHOLDER_IDENTITIES = {
+    "-",
+    "n/a",
+    "none",
+    "not applicable",
+    "not documented",
+    "tbd",
+    "unknown",
+}
 AAVE_CORE_COMPONENTS = frozenset(
     {
         "POOL_ADDRESSES_PROVIDER",
@@ -123,8 +139,13 @@ def run_registry_workflow(
         )
 
     registry_path = workspace.registry_directory / "registry.json"
-    tokens = list(_load_existing_tokens(registry_path))
-    if not tokens:
+    tokens = list(_clear_previous_address_enrichment(_load_existing_tokens(registry_path)))
+    discovery_complete = _token_discovery_complete(
+        registry_path,
+        coverage_complete=token_coverage_complete(workspace),
+        tokenomics_digest=_file_digest(tokenomics),
+    )
+    if not tokens and not discovery_complete:
         if provider is None:
             raise RuntimeError(
                 "An AI provider is required for initial token discovery."
@@ -138,6 +159,9 @@ def run_registry_workflow(
         )
     networks: list[dict[str, Any]] = []
     addresses = list(_extract_documented_addresses(workspace.sources_directory))
+    addresses.extend(
+        _extract_token_catalog_addresses(workspace.sources_directory, tokens)
+    )
     network_page: Path | None = None
     address_page: Path | None = None
     sources: list[str] = []
@@ -166,6 +190,13 @@ def run_registry_workflow(
         "entity": workspace.name,
         "entity_type": workspace.document["entity_type"],
         "generated_at": _timestamp(),
+        "tokenomics_digest": _file_digest(tokenomics),
+        "token_discovery_status": (
+            "complete"
+            if token_coverage_complete(workspace)
+            else "incomplete_source_coverage"
+        ),
+        "source_coverage": ensure_source_coverage(workspace).status,
         "scope": (
             "Protocol-native/governance and protocol-issued economic tokens "
             "only; external and reserve assets excluded."
@@ -180,6 +211,7 @@ def run_registry_workflow(
     token_pages = tuple(
         _write_token_page(workspace, token, addresses) for token in tokens
     )
+    _remove_stale_token_pages(workspace, tokens)
     linked_pages = link_token_references(
         workspace.vault_entity_directory,
         tokens,
@@ -211,6 +243,11 @@ def discover_native_tokens(
         "# Native and Protocol-Issued Token Discovery\n\n"
         f"{TOKEN_SCOPE}\n\n"
         "Use only the supplied Tokenomics page. Do not use prior knowledge. "
+        "A qualifying token must have a specifically documented name or "
+        "symbol and protocol-level economics. Tokens created by users of the "
+        "protocol do not qualify merely because the protocol creates them. "
+        "If no qualifying token is documented, return exactly "
+        '{"tokens":[]}. Never create a placeholder token. '
         "Return strict JSON with this shape:\n"
         '{"tokens":[{"name":"","symbol":"","token_type":"",'
         '"protocol_relationship":"","network":"Not documented",'
@@ -246,6 +283,11 @@ def discover_native_tokens(
                 )
             values[field] = value.strip()
         symbol = values["symbol"].upper()
+        if (
+            values["name"].casefold() in PLACEHOLDER_IDENTITIES
+            or symbol.casefold() in PLACEHOLDER_IDENTITIES
+        ):
+            continue
         if symbol in seen:
             continue
         seen.add(symbol)
@@ -475,7 +517,11 @@ def _extract_documented_addresses(
     if not source_directory.exists():
         return ()
     records = []
-    for path in sorted(source_directory.rglob("*.md")):
+    # Address collection follows the same relevance boundary as research
+    # extraction. This prevents exhaustive deployment catalogs, tutorials,
+    # and SDK references from becoming an unusable scanner queue while still
+    # retaining addresses in substantive protocol documentation.
+    for path in research_source_files(source_directory):
         relative = path.relative_to(source_directory).as_posix()
         lines = path.read_text(encoding="utf-8").splitlines()
         in_code = False
@@ -554,6 +600,80 @@ def _extract_documented_addresses(
     return tuple(records)
 
 
+def _extract_token_catalog_addresses(
+    source_directory: Path,
+    tokens: list[TokenRecord],
+) -> tuple[AddressRecord, ...]:
+    """Read only token-specific sections from otherwise exhaustive catalogs."""
+    records: list[AddressRecord] = []
+    if not source_directory.exists() or not tokens:
+        return ()
+    for path in sorted(source_directory.rglob("addresses.md")):
+        relative = path.relative_to(source_directory).as_posix()
+        active: TokenRecord | None = None
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(),
+            start=1,
+        ):
+            heading = re.match(r"^##\s+(?P<heading>.+)$", line.strip())
+            if heading:
+                title = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading["heading"])
+                normalized = title.casefold()
+                active = next(
+                    (
+                        token
+                        for token in tokens
+                        if "token" in normalized
+                        and token.symbol.casefold() in normalized
+                    ),
+                    None,
+                )
+                continue
+            if active is None or not line.strip().startswith("|"):
+                continue
+            addresses = EVM_ADDRESS_PATTERN.findall(line)
+            if not addresses:
+                continue
+            label = _documented_address_label(line)
+            token_names = {active.name.casefold(), active.symbol.casefold()}
+            if label.casefold() not in token_names:
+                continue
+            chain, chain_id = _chain_from_explorer_link(line)
+            for address in dict.fromkeys(addresses):
+                records.append(
+                    AddressRecord(
+                        name=active.symbol,
+                        component_type="Token",
+                        role=f"{active.symbol} token contract",
+                        address=address,
+                        chain=chain,
+                        chain_id=chain_id,
+                        deployment_block=None,
+                        status=(
+                            "documented"
+                            if chain in AUTO_COLLECTOR_CHAINS
+                            else "documented_unresolved"
+                        ),
+                        source=f"{relative}#L{line_number}",
+                        provenance="documented",
+                    )
+                )
+    return tuple(records)
+
+
+def _chain_from_explorer_link(line: str) -> tuple[str, int | None]:
+    lowered = line.casefold()
+    domains = {
+        "etherscan.io": ("Ethereum", 1),
+        "arbiscan.io": ("Arbitrum", 42161),
+        "basescan.org": ("Base", 8453),
+    }
+    return next(
+        (chain for domain, chain in domains.items() if domain in lowered),
+        ("Not documented", None),
+    )
+
+
 def _documented_address_label(line: str) -> str:
     without_address = re.sub(r"0x[a-fA-F0-9]{40}", "", line)
     cells = [cell.strip(" `*#:-") for cell in without_address.split("|")]
@@ -574,7 +694,7 @@ def _context_label(line: str) -> str | None:
     value = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
     value = re.sub(r"[*_`#]", "", value).strip(" :|-")
     value = re.sub(r"\s+", " ", value).strip()
-    if not value or value.casefold() in {"address", "contract"}:
+    if not value or "|" in value or value.casefold() in {"address", "contract"}:
         return None
     if len(value) > 100 or EVM_ADDRESS_PATTERN.search(value):
         return None
@@ -598,7 +718,7 @@ def _enrich_tokens_from_documented_addresses(
         preferred = sorted(
             matches,
             key=lambda row: (
-                {"Arbitrum": 0, "Ethereum": 1, "Base": 2}.get(row.chain, 9),
+                {"Ethereum": 0, "Arbitrum": 1, "Base": 2}.get(row.chain, 9),
                 row.name.casefold(),
             ),
         )[0]
@@ -621,6 +741,30 @@ def _enrich_tokens_from_documented_addresses(
             )
         )
     return tuple(enriched)
+
+
+def _clear_previous_address_enrichment(
+    tokens: tuple[TokenRecord, ...],
+) -> tuple[TokenRecord, ...]:
+    """Remove address data derived during an earlier registry pass."""
+    cleaned = []
+    for token in tokens:
+        source_parts = [part.strip() for part in token.source.split(";")]
+        derived = [part for part in source_parts[1:] if re.search(r"#L\d+$", part)]
+        if not derived:
+            cleaned.append(token)
+            continue
+        cleaned.append(
+            TokenRecord(
+                **{
+                    **asdict(token),
+                    "network": "Not documented",
+                    "address": "Not documented",
+                    "source": source_parts[0],
+                }
+            )
+        )
+    return tuple(cleaned)
 
 
 def _is_token_deployment(label: str, token: TokenRecord) -> bool:
@@ -728,11 +872,8 @@ def _write_token_page(
         "## Networks and Addresses\n\n"
         "| Network | Standard | Address | Source |\n|---|---|---|---|\n"
         f"{address_rows}\n"
-        "## Supply and Distribution\n\n"
+        "## Documented Token Mechanics\n\n"
         "| Field | Value |\n|---|---|\n"
-        f"| Supply | {token.supply} |\n"
-        f"| Maximum supply | {token.maximum_supply} |\n"
-        f"| Circulating supply | {token.circulating_supply} |\n"
         f"| Mint authority | {token.mint_authority} |\n"
         f"| Allocation | {token.allocation} |\n"
         f"| Emissions | {token.emissions} |\n"
@@ -772,50 +913,49 @@ def refresh_token_pages_from_registry(
 def _render_market_snapshot(snapshot: MarketSnapshot | None) -> str:
     if snapshot is None:
         return (
-            "## Market Snapshot (Third Party)\n\n"
-            "- Not collected. Use the market-data action to request a "
-            "CoinGecko snapshot.\n\n"
+            "## Current Supply Data — CoinGecko\n\n"
+            "| Field | Value |\n|---|---|\n"
+            "| Fully diluted valuation | Not collected |\n"
+            "| Circulating supply | Not collected |\n"
+            "| Total supply | Not collected |\n"
+            "| Maximum supply | Not collected |\n"
+            "| Updated | Never |\n\n"
+            "Run **Refresh current token supply data** to request these "
+            "fields from CoinGecko. This section is never filled by AI.\n\n"
         )
     if snapshot.status != "available":
-        detail = snapshot.detail or "No market data was returned."
+        detail = snapshot.detail or "No supply data was returned."
         return (
-            "## Market Snapshot (Third Party)\n\n"
+            "## Current Supply Data — CoinGecko\n\n"
             f"- Status: Unavailable — {detail}\n"
             f"- Attempted: {snapshot.collected_at}\n"
-            "- This does not change documented or on-chain supply fields.\n\n"
+            "- Run **Refresh current token supply data** to retry.\n"
+            "- This section is never filled by AI.\n\n"
         )
 
-    def display(value: float | int | None, *, percent: bool = False) -> str:
+    def display(value: float | int | None) -> str:
         if value is None:
             return "Not available"
-        rendered = f"{value:,.8f}".rstrip("0").rstrip(".")
-        return f"{rendered}%" if percent else rendered
+        return f"{value:,.2f}".rstrip("0").rstrip(".")
 
     def currency(value: float | int | None) -> str:
         return f"${display(value)}" if value is not None else "Not available"
 
     source = snapshot.source_url or "Not available"
     return (
-        "## Market Snapshot (Third Party)\n\n"
+        "## Current Supply Data — CoinGecko\n\n"
         "| Field | Value |\n|---|---|\n"
-        f"| Price (USD) | {currency(snapshot.price_usd)} |\n"
-        f"| Market cap (USD) | {currency(snapshot.market_cap_usd)} |\n"
-        "| Fully diluted valuation (USD) | "
+        "| Fully diluted valuation | "
         f"{currency(snapshot.fully_diluted_valuation_usd)} |\n"
-        f"| 24h volume (USD) | {currency(snapshot.volume_24h_usd)} |\n"
-        "| 24h price change | "
-        f"{display(snapshot.price_change_24h_percent, percent=True)} |\n"
-        f"| Market cap rank | {display(snapshot.market_cap_rank)} |\n"
         f"| Circulating supply | {display(snapshot.circulating_supply)} |\n"
         f"| Total supply | {display(snapshot.total_supply)} |\n"
         f"| Maximum supply | {display(snapshot.max_supply)} |\n"
-        f"| Address match | {snapshot.network}: "
+        f"| Exact address match | {snapshot.network}: "
         f"`{snapshot.contract_address}` |\n"
-        f"| Provider updated | {snapshot.provider_updated_at or 'Not available'} |\n"
-        f"| Collected | {snapshot.collected_at} |\n"
+        f"| Updated | {snapshot.provider_updated_at or snapshot.collected_at} |\n"
         f"| Source | [CoinGecko]({source}) |\n\n"
-        "> Third-party market snapshot. It does not overwrite documented "
-        "tokenomics or raw on-chain evidence.\n\n"
+        "> Deterministic third-party supply data. This section is never "
+        "filled by AI and does not overwrite documented token mechanics.\n\n"
     )
 
 
@@ -914,9 +1054,24 @@ def _update_protocol_index(
             f"[[Protocols/{workspace.name}/Registry|Contract Registry]]"
         )
     entries.extend(f"[[Tokens/{token.symbol}/Index|{token.symbol}]]" for token in tokens)
-    updated = text
+    valid_symbols = {token.symbol.casefold() for token in tokens}
+    updated = re.sub(
+        r"(?m)^- \[\[Tokens/([^/\]]+)/Index\|[^\]]+\]\]\n?",
+        lambda match: (
+            match.group(0)
+            if match.group(1).casefold() in valid_symbols
+            else ""
+        ),
+        text,
+    )
     if "## Linked Data" not in updated:
-        updated = updated.rstrip() + "\n\n## Linked Data\n"
+        updated = updated.rstrip() + "\n\n## Linked Data\n\n"
+    else:
+        updated = re.sub(
+            r"(?m)^(## Linked Data)\n(?=- )",
+            r"\1\n\n",
+            updated,
+        )
     for entry in entries:
         if entry not in updated:
             updated = updated.rstrip() + f"\n- {entry}\n"
@@ -1032,8 +1187,79 @@ def _load_existing_tokens(path: Path) -> tuple[TokenRecord, ...]:
         if not isinstance(row, dict):
             continue
         if all(isinstance(row.get(field), str) for field in fields):
-            tokens.append(TokenRecord(**{field: row[field] for field in fields}))
+            token = TokenRecord(**{field: row[field] for field in fields})
+            if (
+                token.name.strip().casefold() in PLACEHOLDER_IDENTITIES
+                or token.symbol.strip().casefold() in PLACEHOLDER_IDENTITIES
+            ):
+                continue
+            tokens.append(token)
     return tuple(tokens)
+
+
+def registry_needs_token_discovery(workspace: ProjectWorkspace) -> bool:
+    path = workspace.registry_directory / "registry.json"
+    tokenomics = workspace.vault_entity_directory / "Tokenomics.md"
+    if not tokenomics.exists():
+        return True
+    if _token_discovery_complete(
+        path,
+        coverage_complete=token_coverage_complete(workspace),
+        tokenomics_digest=_file_digest(tokenomics),
+    ):
+        return False
+    return not bool(_load_existing_tokens(path))
+
+
+def _token_discovery_complete(
+    path: Path,
+    *,
+    coverage_complete: bool,
+    tokenomics_digest: str,
+) -> bool:
+    if not path.exists():
+        return False
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(
+        coverage_complete
+        and
+        isinstance(document, dict)
+        and document.get("token_discovery_status") == "complete"
+        and document.get("tokenomics_digest") == tokenomics_digest
+    )
+
+
+def _file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _remove_stale_token_pages(
+    workspace: ProjectWorkspace,
+    tokens: list[TokenRecord] | tuple[TokenRecord, ...],
+) -> None:
+    current_symbols = {token.symbol.casefold() for token in tokens}
+    tokens_root = workspace.vault_root / "Tokens"
+    if not tokens_root.exists():
+        return
+    for page in tokens_root.glob("*/Index.md"):
+        try:
+            text = page.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if 'generated_by: "definalyzer_registry"' not in text:
+            continue
+        if f'parent_protocol: "{workspace.name}"' not in text:
+            continue
+        if page.parent.name.casefold() in current_symbols:
+            continue
+        page.unlink()
+        try:
+            page.parent.rmdir()
+        except OSError:
+            pass
 
 
 def _write_generated_json(path: Path, document: dict[str, Any]) -> None:

@@ -4,8 +4,14 @@ import unittest
 from pathlib import Path
 
 from definalyzer.providers import ProviderResponse
+from definalyzer.source_coverage import (
+    add_official_source,
+    update_source_status,
+)
 from definalyzer.registry_workflow import (
     _extract_documented_addresses,
+    _extract_token_catalog_addresses,
+    discover_native_tokens,
     run_registry_workflow,
 )
 from definalyzer.workspace import WorkspaceManager
@@ -48,11 +54,104 @@ class FakeTokenProvider:
         )
 
 
+class PlaceholderTokenProvider:
+    name = "fake"
+
+    def generate(self, prompt, *, working_directory):
+        row = {
+            "name": "Not documented",
+            "symbol": "NOT DOCUMENTED",
+            "token_type": "Protocol-issued coin",
+            "protocol_relationship": "Assets are created by protocol users",
+            "network": "Not documented",
+            "standard": "Not documented",
+            "address": "Not documented",
+            "supply": "Not documented",
+            "maximum_supply": "Not documented",
+            "circulating_supply": "Not documented",
+            "emissions": "Not documented",
+            "allocation": "Not documented",
+            "unlocks": "Not documented",
+            "mint_authority": "Not documented",
+            "utility": "Not documented",
+            "source": "Tokenomics.md",
+        }
+        return ProviderResponse(
+            text=json.dumps({"tokens": [row]}),
+            provider="fake",
+            command=("fake",),
+        )
+
+
 class RegistryWorkflowTests(unittest.TestCase):
+    def test_rejects_placeholder_token_identity_and_requests_empty_list(self):
+        provider = PlaceholderTokenProvider()
+
+        tokens = discover_native_tokens(
+            provider=provider,
+            tokenomics=(
+                "# Tokenomics\n\nNo protocol token is documented. Users "
+                "create their own assets."
+            ),
+            working_directory=Path("."),
+        )
+
+        self.assertEqual(tokens, ())
+
+    def test_removes_stale_generated_placeholder_token_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(name="No Token Protocol")
+            (workspace.vault_entity_directory / "Tokenomics.md").write_text(
+                "# Tokenomics\n\nNo protocol token is documented.",
+                encoding="utf-8",
+            )
+            source = add_official_source(
+                workspace,
+                category="tokenomics",
+                url="https://example.test/tokenomics",
+            )
+            update_source_status(
+                workspace,
+                source_id=source.source_id,
+                status="collected",
+            )
+            stale = workspace.vault_root / "Tokens" / "NOT DOCUMENTED" / "Index.md"
+            stale.parent.mkdir(parents=True)
+            stale.write_text(
+                'generated_by: "definalyzer_registry"\n'
+                'parent_protocol: "No Token Protocol"\n',
+                encoding="utf-8",
+            )
+            protocol_index = workspace.vault_entity_directory / "Index.md"
+            protocol_index.write_text(
+                protocol_index.read_text(encoding="utf-8")
+                + "\n## Linked Data\n\n"
+                "- [[Tokens/NOT DOCUMENTED/Index|NOT DOCUMENTED]]\n",
+                encoding="utf-8",
+            )
+
+            result = run_registry_workflow(
+                workspace=workspace,
+                provider=PlaceholderTokenProvider(),
+            )
+            refreshed = run_registry_workflow(
+                workspace=workspace,
+                provider=None,
+            )
+
+            self.assertEqual(result.tokens, ())
+            self.assertEqual(refreshed.tokens, ())
+            self.assertFalse(stale.exists())
+            self.assertNotIn(
+                "NOT DOCUMENTED",
+                protocol_index.read_text(encoding="utf-8"),
+            )
+
     def test_parses_gitbook_address_lists_with_chain_context(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "addresses.md").write_text(
+            (root / "deployments.md").write_text(
                 "## Arbitrum (Hub)\n"
                 "Contract\nAddress\nEXM\n"
                 "[0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]"
@@ -85,6 +184,67 @@ class RegistryWorkflowTests(unittest.TestCase):
                 == "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                 for row in records
             )
+        )
+
+    def test_excludes_bulk_address_catalogs_and_tutorials_from_registry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "learn").mkdir()
+            (root / "learn" / "governance.md").write_text(
+                "| Governance contract | "
+                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |\n",
+                encoding="utf-8",
+            )
+            (root / "developers" / "contracts").mkdir(parents=True)
+            (root / "developers" / "contracts" / "addresses.md").write_text(
+                "| Helper | 0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb |\n",
+                encoding="utf-8",
+            )
+            (root / "tutorials").mkdir()
+            (root / "tutorials" / "example.md").write_text(
+                "| Example | 0xcccccccccccccccccccccccccccccccccccccccc |\n",
+                encoding="utf-8",
+            )
+
+            records = _extract_documented_addresses(root)
+
+        self.assertEqual(
+            [record.address for record in records],
+            ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+        )
+
+    def test_reads_only_exact_token_rows_from_token_catalog_section(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.mkdir(exist_ok=True)
+            (root / "addresses.md").write_text(
+                "## Core contracts\n"
+                "| MORPHO | 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |\n"
+                "## MORPHO Token\n"
+                "| MORPHO | [0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]"
+                "(https://etherscan.io/address/"
+                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) |\n"
+                "| MORPHO wrapper | "
+                "0xcccccccccccccccccccccccccccccccccccccccc |\n",
+                encoding="utf-8",
+            )
+            from definalyzer.registry_workflow import TokenRecord
+
+            token_row = json.loads(
+                FakeTokenProvider().generate("", working_directory=root).text
+            )["tokens"][0]
+            token_row["name"] = "MORPHO"
+            token_row["symbol"] = "MORPHO"
+            records = _extract_token_catalog_addresses(
+                root,
+                [TokenRecord(**token_row)],
+            )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].chain, "Ethereum")
+        self.assertEqual(
+            records[0].address,
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         )
 
     def test_creates_only_scoped_token_pages_networks_and_links(self):

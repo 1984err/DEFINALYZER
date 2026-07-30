@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 from definalyzer.providers import ProviderResponse
 from definalyzer.verification_planning import (
     _normalize_collector_request_aliases,
+    _page_sections,
     _strip_verification_planning_preamble,
     generate_verification_plan,
 )
@@ -13,6 +15,26 @@ from definalyzer.workspace import WorkspaceManager
 
 
 ADDRESS = "0x1234567890abcdef1234567890abcdef12345678"
+
+
+class VerificationPageSplittingTests(unittest.TestCase):
+    def test_splits_oversized_page_without_dropping_content(self):
+        original = ("material fact\n\n" * 100).strip()
+        sections = _page_sections("Security.md", original, 300)
+
+        self.assertGreater(len(sections), 1)
+        reconstructed = "".join(
+            re.sub(
+                r"^\s*## SOURCE NOTE: .*?\n\nPart \d+/\d+\n\n",
+                "",
+                section,
+            ).strip()
+            for section in sections
+        )
+        self.assertEqual(
+            re.sub(r"\s+", "", reconstructed),
+            re.sub(r"\s+", "", original),
+        )
 
 
 class FakePlanningProvider:

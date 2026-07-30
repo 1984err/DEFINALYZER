@@ -200,10 +200,18 @@ def generate_verification_plan(
         provider_calls=provider_calls,
         reused_calls=reused_calls,
         ready_requests=import_result.report["ready_count"],
-        manual_claims=len(
-            re.findall(r"\| Status \| Manual review \|", page)
-        ),
+        manual_claims=_manual_claim_count(page),
     )
+
+
+def _manual_claim_count(page: str) -> int:
+    section = re.search(
+        r"(?ms)^## Manual Review\s*$\n(?P<body>.*?)(?=^## |\Z)",
+        page,
+    )
+    if section is None:
+        return 0
+    return len(re.findall(r"(?m)^### VR-[A-Z0-9-]+\b", section["body"]))
 
 
 def _bundle_research_pages(paths: tuple[Path, ...]) -> tuple[str, ...]:
@@ -216,19 +224,44 @@ def _bundle_research_pages(paths: tuple[Path, ...]) -> tuple[str, ...]:
         text = strip_generated_verification_links(
             path.read_text(encoding="utf-8")
         )
-        section = f"\n\n## SOURCE NOTE: {path.name}\n\n{text.strip()}\n"
-        if len(section) > maximum:
-            raise ValueError(
-                f"Research page is too large for verification planning: {path.name}"
-            )
-        if current and current_size + len(section) > maximum:
-            bundles.append("".join(current))
-            current, current_size = [], 0
-        current.append(section)
-        current_size += len(section)
+        sections = _page_sections(path.name, text, maximum)
+        for section in sections:
+            if current and current_size + len(section) > maximum:
+                bundles.append("".join(current))
+                current, current_size = [], 0
+            current.append(section)
+            current_size += len(section)
     if current:
         bundles.append("".join(current))
     return tuple(bundles)
+
+
+def _page_sections(name: str, text: str, maximum: int) -> tuple[str, ...]:
+    """Split an oversized note at paragraph boundaries without dropping text."""
+    prefix = f"\n\n## SOURCE NOTE: {name}\n\n"
+    available = maximum - len(prefix) - 80
+    paragraphs = re.split(r"(\n\s*\n)", text.strip())
+    chunks: list[str] = []
+    current = ""
+    for paragraph in paragraphs:
+        if len(paragraph) > available:
+            pieces = [
+                paragraph[start : start + available]
+                for start in range(0, len(paragraph), available)
+            ]
+        else:
+            pieces = [paragraph]
+        for piece in pieces:
+            if current and len(current) + len(piece) > available:
+                chunks.append(current)
+                current = ""
+            current += piece
+    if current:
+        chunks.append(current)
+    return tuple(
+        f"{prefix}Part {index}/{len(chunks)}\n\n{chunk.strip()}\n"
+        for index, chunk in enumerate(chunks, start=1)
+    )
 
 
 def _compact_registry(path: Path) -> str:
