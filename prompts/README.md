@@ -5,9 +5,32 @@ verification workflow.
 
 ## Research extraction
 
-Combine `master_prompt.md` with one topic template from `templates/`. Research
-pages contain only decision-relevant facts, documented risks or constraints,
-and material unknowns.
+All reusable prompts are ordinary Markdown files in this visible `prompts/`
+folder. They can be copied, opened, or supplied to any AI provider; they are
+not hidden inside the application.
+
+For a manual research-page run:
+
+1. Open `prompts/master_prompt.md`.
+2. Choose one research template from `prompts/templates/`, such as
+   `template_protocol_overview.md` or `template_tokenomics.md`.
+3. Give the AI the complete master prompt followed by the complete selected
+   template. Do not substitute the registry or verification templates.
+4. Attach or paste the collected Markdown files from
+   `output/sources/<project>/`. The `_official/` subfolder contains any
+   separately registered official sources and should be included when present.
+5. Ask the AI to return Markdown only, following both prompt files.
+6. Save the answer in the project's Obsidian folder under
+   `output/vault/Protocols/<project>/`, `Chains/<project>/`, or
+   `Tokens/<project>/`, as applicable.
+
+Run one topic template at a time. The returned filenames follow the template:
+`Protocol-Overview.md`, `Architecture.md`, `Tokenomics.md`, `Governance.md`,
+`Security.md`, `Risk-Assessment.md`, `Revenue-Model.md`, `Liquidity.md`,
+`Integrations-Dependencies.md`, and `Competitive-Analysis.md`.
+
+Research pages contain only decision-relevant facts, documented risks or
+constraints, and material unknowns.
 
 The topic templates deliberately omit:
 
@@ -19,7 +42,9 @@ The topic templates deliberately omit:
 ## Registry extraction
 
 Use `templates/protocol_registry_extraction.md` to create the normalized
-address and technical-reference inventory.
+address and technical-reference inventory. Supply it after the research pages
+exist, together with those research pages and relevant official source
+Markdown. It is not a substitute for a research topic template.
 
 ## Verification planning
 

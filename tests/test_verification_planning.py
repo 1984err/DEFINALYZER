@@ -6,8 +6,10 @@ from pathlib import Path
 
 from definalyzer.providers import ProviderResponse
 from definalyzer.verification_planning import (
+    _compact_candidate_json,
     _normalize_collector_request_aliases,
     _page_sections,
+    _normalize_route_statuses,
     _strip_verification_planning_preamble,
     generate_verification_plan,
 )
@@ -123,6 +125,39 @@ class FakePlanningProvider:
 
 
 class VerificationPlanningTests(unittest.TestCase):
+    def test_normalizes_manual_route_status_and_summary(self):
+        page = (
+            "## Summary\n\n| Status | Count |\n|---|---:|\n"
+            "| Pending | 1 |\n| Manual review | 1 |\n\n"
+            "### VR-GOV-001 — Authority\n\n"
+            "| Field | Value |\n|---|---|\n"
+            "| Status | Pending |\n| Check route | Manual |\n"
+        )
+
+        normalized = _normalize_route_statuses(page)
+
+        self.assertIn("| Status | Manual review |", normalized)
+        self.assertIn("| Pending | 0 |", normalized)
+        self.assertIn("| Manual review | 1 |", normalized)
+
+    def test_compacts_candidate_json_without_losing_fields(self):
+        original = json.dumps(
+            {
+                "candidates": [
+                    {
+                        "claim": "Material claim",
+                        "materiality": "Material reason",
+                    }
+                ]
+            },
+            indent=2,
+        )
+
+        compact = _compact_candidate_json(original)
+
+        self.assertEqual(json.loads(compact), json.loads(original))
+        self.assertLess(len(compact), len(original))
+
     def test_normalizes_standard_call_method_alias(self):
         page = (
             "```definalyzer-verification\n"
@@ -136,6 +171,20 @@ class VerificationPlanningTests(unittest.TestCase):
 
         self.assertIn('"function": "totalSupply"', normalized)
         self.assertNotIn('"method"', normalized)
+
+    def test_normalizes_collector_job_name_from_project_slug(self):
+        page = (
+            "```definalyzer-verification\n"
+            '{"schema_version":1,"name":"Project Name verification",'
+            '"requests":[]}\n```'
+        )
+
+        normalized = _normalize_collector_request_aliases(
+            page,
+            job_name="project-name-verification",
+        )
+
+        self.assertIn('"name": "project-name-verification"', normalized)
 
     def test_strips_echoed_planning_template_before_entity_page(self):
         page = (

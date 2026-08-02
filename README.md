@@ -16,7 +16,7 @@ verification is skipped or unavailable.
 - Categorized, resumable verification planning: available
 - Deterministic keyless CoinGecko supply enrichment: available
 - Section-scoped, read-only AI explanations: available
-- Automated evidence evaluation and Obsidian link insertion: deferred
+- Human-approved evidence evaluation and Obsidian link insertion: available
 
 ## Install
 
@@ -52,7 +52,8 @@ python main.py
 ```
 
 The menu supports project creation, complete-workflow status, separate
-workflow stages, crawling, blockchain collection, and project status.
+workflow stages, crawling, blockchain collection, manual token records,
+vault indexes, and project status.
 
 **Run complete workflow** now executes the usable research pipeline:
 documentation collection, all missing research pages, registry generation,
@@ -94,6 +95,45 @@ Verification remains optional. Projects created with verification status
 explicit “verification skipped” message. Projects configured as `pending`
 continue through verification planning; manual-review checks are a successful
 workflow result, not a pipeline failure.
+
+## Using DEFINALYZER without AI
+
+The source collector is independently useful and makes no AI calls. Create a
+project and choose **Crawl documentation**, or run:
+
+```powershell
+python main.py init "Example Protocol" --docs-url https://docs.example.org
+python main.py crawl example-protocol
+```
+
+The cleaned local Markdown remains under
+`output/sources/example-protocol/`. Copy that folder, open it in an editor, or
+send the files to any model or program you choose. No special export step or
+DEFINALYZER prompt is required. Concise research-page generation does require
+an AI provider because it selects and restructures decision-relevant facts.
+For a manual AI extraction, the reusable prompts are plainly available under
+`prompts/`: combine `prompts/master_prompt.md` with one file from
+`prompts/templates/`, then provide the collected source Markdown. See
+`prompts/README.md` for the exact sequence, output filenames, and save
+locations.
+
+These functions also work without AI:
+
+- project creation, status, and Obsidian navigation indexes
+- website or public-GitHub Markdown collection
+- official-source registration and collection
+- manual native/protocol-issued token entry
+- exact-address CoinGecko supply and FDV refresh
+- raw blockchain RPC evidence collection for an existing request
+- human maintenance of an existing verification checklist
+
+The verification page has value without AI as a categorized analyst to-do
+list: it preserves the material claim, why it matters, what evidence is
+needed, how to check it, and where to look. Creating that checklist from
+research notes currently uses AI; following it and adding analyst notes does
+not. Evidence collection records raw facts and does not itself confirm or deny
+claims. Research extraction, new verification-plan generation, evidence
+interpretation proposals, and scoped Q&A require the configured AI provider.
 
 Extraction mode defaults to `auto`: a small source set uses one provider call;
 a larger set is split into resumable fact-ledger batches and consolidated.
@@ -144,6 +184,12 @@ without calling AI:
 python main.py extract example-protocol --template protocol-overview --plan
 ```
 
+Only one complete workflow may run for a project at a time. A second launch is
+rejected instead of writing concurrently or duplicating provider calls. A
+project whose crawl is `partial`, `blocked`, or still incomplete is recrawled;
+the complete workflow will not treat a few surviving source files as a valid
+corpus for AI extraction.
+
 The existing tools remain independently available:
 
 ```powershell
@@ -177,12 +223,28 @@ output/
 Open `output/vault/` directly in Obsidian or synchronize that directory.
 Generated output is ignored by Git.
 
+`Indexes/Home.md`, `Research.md`, `Tokens.md`, and `Verification.md` are
+generated vault-wide navigation pages. Choose **Refresh Obsidian vault
+indexes** after adding or changing projects; this uses no AI. Each verification page is stored at
+`Verification/<project>/Index.md`, leaving its project folder available for
+related analyst evidence. Saved **Analyst Reviews** are optional,
+non-canonical scratch notes; no extraction, registry, verification, or index
+operation depends on them, so deleting one does not affect future entries.
+
 Registry token pages are intentionally narrow: they cover only a chain or
 protocol's native/governance token and protocol-issued tokens with material
 economics (for example, AAVE and GHO). Reserve assets, collateral, wrappers,
 receipt tokens, and external dependencies do not receive token pages. Research
 pages link the first meaningful reference to each qualifying token; repeated
 mentions remain plain text to keep the notes readable.
+
+Use **Add or update a token manually** when official documentation identifies
+a qualifying token but automated discovery misses it. The menu records its
+identity, relationship, address, mechanics, and official source without AI,
+then regenerates the token page and links. Current supply fields cannot be
+entered there: they remain exclusively owned by deterministic CoinGecko
+enrichment. Re-entering the same symbol updates that record instead of
+creating a duplicate.
 
 Current supply enrichment runs automatically after registry generation and is
 also independently refreshable through **Refresh current token supply data**

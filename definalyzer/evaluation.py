@@ -376,7 +376,7 @@ def _refresh_summary_counts(text: str) -> str:
 
 
 def _verification_page(workspace: ProjectWorkspace) -> Path:
-    path = workspace.vault_root / "Verification" / f"{workspace.name} - Verification.md"
+    path = workspace.verification_page_path
     if not path.exists():
         raise FileNotFoundError(f"Verification page does not exist: {path}")
     return path

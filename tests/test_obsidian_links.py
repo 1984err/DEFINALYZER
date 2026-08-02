@@ -2,10 +2,26 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from definalyzer.obsidian_links import insert_verification_links
+from definalyzer.obsidian_links import (
+    insert_verification_links,
+    strip_generated_verification_links,
+)
 
 
 class ObsidianLinkTests(unittest.TestCase):
+    def test_strips_generated_line_with_multiple_link_separators(self):
+        text = (
+            "## Control\n\n"
+            "Verification: [[Verification/Example/Index#^vr-1|VR-1]] · "
+            "[[Verification/Example/Index#^vr-2|VR-2]]\n\n"
+            "| Fact | Value |\n"
+        )
+
+        cleaned = strip_generated_verification_links(text)
+
+        self.assertNotIn("Verification:", cleaned)
+        self.assertIn("| Fact | Value |", cleaned)
+
     def test_inserts_compact_links_at_exact_headings_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -18,8 +34,8 @@ class ObsidianLinkTests(unittest.TestCase):
                 "| Fact | Value |\n|---|---|\n| Upgrade | Governed |\n",
                 encoding="utf-8",
             )
-            verification = root / "Verification" / "Example - Verification.md"
-            verification.parent.mkdir()
+            verification = root / "Verification" / "Example" / "Index.md"
+            verification.parent.mkdir(parents=True)
             verification.write_text(
                 "# Example — Verification\n\n"
                 "## Research Link Map\n\n"
@@ -51,7 +67,7 @@ class ObsidianLinkTests(unittest.TestCase):
         self.assertNotIn("definalyzer-verification-links", text)
         self.assertIn("VR-GOV-001]]\n\n| Fact | Value |", text)
         self.assertIn(
-            "[[Verification/Example - Verification#^vr-gov-001|"
+            "[[Verification/Example/Index#^vr-gov-001|"
             "VR-GOV-001]]",
             text,
         )

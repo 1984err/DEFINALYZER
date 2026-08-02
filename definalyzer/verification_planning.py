@@ -156,16 +156,15 @@ def generate_verification_plan(
             _repair_mojibake(page),
             entity=workspace.name,
             research_pages=research_pages,
-        )
+        ),
+        job_name=f"{workspace.slug}-verification",
         ),
         entity=workspace.name,
     )
+    page = _normalize_verification_self_links(page, workspace.name)
+    page = _normalize_route_statuses(page)
 
-    page_path = (
-        workspace.vault_root
-        / "Verification"
-        / f"{workspace.name} - Verification.md"
-    )
+    page_path = workspace.verification_page_path
     page_path.parent.mkdir(parents=True, exist_ok=True)
     page_with_frontmatter = (
         "---\n"
@@ -205,13 +204,57 @@ def generate_verification_plan(
 
 
 def _manual_claim_count(page: str) -> int:
-    section = re.search(
-        r"(?ms)^## Manual Review\s*$\n(?P<body>.*?)(?=^## |\Z)",
-        page,
+    return len(
+        re.findall(r"(?m)^\| Status \| Manual review \|$", page)
     )
-    if section is None:
-        return 0
-    return len(re.findall(r"(?m)^### VR-[A-Z0-9-]+\b", section["body"]))
+
+
+def _normalize_route_statuses(page: str) -> str:
+    """Make pending/manual status agree with each claim's check route."""
+    entry_pattern = re.compile(
+        r"(?ms)(^### VR-[A-Z0-9-]+\s+[—-].*?\n)"
+        r"(?P<body>.*?)(?=^### |^## |\Z)"
+    )
+
+    def normalize_entry(match: re.Match[str]) -> str:
+        body = match.group("body")
+        route = re.search(r"(?m)^\| Check route \| (.*?) \|$", body)
+        status = re.search(r"(?m)^\| Status \| (.*?) \|$", body)
+        if route is None or status is None:
+            return match.group(0)
+        current = status.group(1).strip()
+        if current.casefold() not in {"pending", "manual review"}:
+            return match.group(0)
+        expected = (
+            "Manual review"
+            if route.group(1).strip().casefold() == "manual"
+            else "Pending"
+        )
+        body = (
+            body[: status.start(1)]
+            + expected
+            + body[status.end(1) :]
+        )
+        return match.group(1) + body
+
+    page = entry_pattern.sub(normalize_entry, page)
+    statuses = re.findall(r"(?m)^\| Status \| (.*?) \|$", page)
+    for label in (
+        "Pending",
+        "Evidence collected",
+        "Manual review",
+        "Supported",
+        "Contradicted",
+        "Inconclusive",
+    ):
+        count = sum(value.casefold() == label.casefold() for value in statuses)
+        page = re.sub(
+            rf"(?m)^\| {re.escape(label)} \| \d+ \|$",
+            f"| {label} | {count} |",
+            page,
+            count=1,
+        )
+    return page
 
 
 def _bundle_research_pages(paths: tuple[Path, ...]) -> tuple[str, ...]:
@@ -377,7 +420,11 @@ def _candidate_reduction_prompt(candidates: list[str]) -> str:
     )
 
 
-def _normalize_collector_request_aliases(page: str) -> str:
+def _normalize_collector_request_aliases(
+    page: str,
+    *,
+    job_name: str | None = None,
+) -> str:
     """Repair known schema aliases without changing request meaning."""
     match = re.search(
         r"```definalyzer-verification\s*\n(?P<body>.*?)\n```",
@@ -387,10 +434,13 @@ def _normalize_collector_request_aliases(page: str) -> str:
     if match is None:
         return page
     document = _parse_json(match.group("body"))
+    changed = False
+    if job_name is not None and document.get("name") != job_name:
+        document["name"] = job_name
+        changed = True
     requests = document.get("requests")
     if not isinstance(requests, list):
         return page
-    changed = False
     for request in requests:
         if not isinstance(request, dict):
             continue
@@ -429,7 +479,7 @@ def _final_prompt(
     candidates: list[str],
 ) -> str:
     candidate_text = "\n\n".join(
-        f"## Candidate Batch {index}\n{value}"
+        f"## Candidate Batch {index}\n{_compact_candidate_json(value)}"
         for index, value in enumerate(candidates, start=1)
     )
     return (
@@ -462,6 +512,11 @@ def _final_prompt(
         "## MATERIAL CANDIDATES\n\n"
         f"{candidate_text}\n"
     )
+
+
+def _compact_candidate_json(value: str) -> str:
+    """Remove JSON formatting overhead without dropping candidate evidence."""
+    return json.dumps(_parse_json(value), separators=(",", ":"))
 
 
 def _validate_candidate_response(
@@ -649,6 +704,17 @@ def _normalize_research_links(
 
         output.append(pattern.sub(replace, line))
     return "\n".join(output).rstrip() + "\n"
+
+
+def _normalize_verification_self_links(text: str, entity: str) -> str:
+    canonical = f"Verification/{entity}/Index#"
+    patterns = (
+        f"[[{entity} - Verification#",
+        f"[[Verification/{entity} - Verification#",
+    )
+    for pattern in patterns:
+        text = text.replace(pattern, f"[[{canonical}")
+    return text
 
 
 def _import_or_empty(

@@ -39,6 +39,30 @@ class WorkspaceManagerTests(unittest.TestCase):
             with self.assertRaisesRegex(FileExistsError, "will not be overwritten"):
                 manager.create_project(name="Existing")
 
+    def test_migrates_legacy_flat_verification_page_and_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            project = manager.create_project(name="Example")
+            legacy = project.vault_root / "Verification" / "Example - Verification.md"
+            legacy.write_text("# Legacy verification\n", encoding="utf-8")
+            research = project.vault_entity_directory / "Risk-Assessment.md"
+            research.write_text(
+                "[[Verification/Example - Verification#^vr-001|VR-001]]\n",
+                encoding="utf-8",
+            )
+
+            loaded = manager.load_project("example")
+
+            self.assertFalse(legacy.exists())
+            self.assertEqual(
+                loaded.verification_page_path.read_text(encoding="utf-8"),
+                "# Legacy verification\n",
+            )
+            self.assertIn(
+                "[[Verification/Example/Index#^vr-001|VR-001]]",
+                research.read_text(encoding="utf-8"),
+            )
+
     def test_updates_stage_and_verification_status(self):
         with tempfile.TemporaryDirectory() as directory:
             manager = WorkspaceManager(Path(directory) / "output")

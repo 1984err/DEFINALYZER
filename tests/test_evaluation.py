@@ -40,7 +40,8 @@ class EvaluationTests(unittest.TestCase):
             page = (
                 workspace.vault_root
                 / "Verification"
-                / "Example - Verification.md"
+                / "Example"
+                / "Index.md"
             )
             page.write_text(
                 "# Example — Verification\n\n"
@@ -106,7 +107,8 @@ class EvaluationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             manager = WorkspaceManager(Path(directory) / "output")
             workspace = manager.create_project(name="Example")
-            page = workspace.vault_root / "Verification" / "Example - Verification.md"
+            page = workspace.verification_page_path
+            page.parent.mkdir(parents=True, exist_ok=True)
             page.write_text(
                 "# Example — Verification\n\n"
                 "### VR-GOV-001 — Governance\n\n"

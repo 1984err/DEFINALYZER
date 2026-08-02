@@ -97,6 +97,10 @@ class ProjectWorkspace:
     def verification_directory(self) -> Path:
         return self.vault_root / "Verification" / self.name
 
+    @property
+    def verification_page_path(self) -> Path:
+        return self.verification_directory / "Index.md"
+
 
 class WorkspaceManager:
     def __init__(self, root: str | Path = "output") -> None:
@@ -199,6 +203,12 @@ class WorkspaceManager:
         write_coverage_source(workspace)
         return workspace
 
+    def refresh_vault_indexes(self) -> tuple[Path, ...]:
+        """Regenerate deterministic vault navigation without using AI."""
+        from .vault_indexes import generate_vault_indexes
+
+        return generate_vault_indexes(self.root)
+
     def load_project(self, name_or_slug: str) -> ProjectWorkspace:
         slug = slugify(name_or_slug)
         manifest = self.root / "projects" / slug / "project.json"
@@ -214,7 +224,9 @@ class WorkspaceManager:
             ) from exc
 
         self._validate_document(document)
-        return ProjectWorkspace(self.root, document)
+        workspace = ProjectWorkspace(self.root, document)
+        self._migrate_verification_page(workspace)
+        return workspace
 
     def list_projects(self) -> list[ProjectWorkspace]:
         if not self.root.exists():
@@ -295,11 +307,54 @@ class WorkspaceManager:
             "stages": workspace.document["stages"],
             "sources": str(workspace.sources_directory),
             "vault": str(workspace.vault_entity_directory),
-            "verification": str(workspace.verification_directory),
+            "verification": str(workspace.verification_page_path),
             "registry": str(workspace.registry_directory),
             "jobs": str(workspace.jobs_directory),
             "evidence": str(workspace.evidence_directory),
         }
+
+    @staticmethod
+    def _migrate_verification_page(workspace: ProjectWorkspace) -> None:
+        legacy = (
+            workspace.vault_root
+            / "Verification"
+            / f"{workspace.name} - Verification.md"
+        )
+        canonical = workspace.verification_page_path
+        if not legacy.exists():
+            return
+        canonical.parent.mkdir(parents=True, exist_ok=True)
+        if canonical.exists():
+            if legacy.read_bytes() != canonical.read_bytes():
+                raise FileExistsError(
+                    "Both legacy and canonical verification pages exist with "
+                    f"different contents: {legacy}; {canonical}"
+                )
+            legacy.unlink()
+        else:
+            legacy.replace(canonical)
+
+        replacements = {
+            f"[[Verification/{workspace.name} - Verification#": (
+                f"[[Verification/{workspace.name}/Index#"
+            ),
+            f"[[{workspace.name} - Verification#": (
+                f"[[Verification/{workspace.name}/Index#"
+            ),
+        }
+        pages = [
+            *workspace.vault_entity_directory.glob("*.md"),
+            canonical,
+        ]
+        for page in pages:
+            if not page.exists():
+                continue
+            text = page.read_text(encoding="utf-8")
+            updated = text
+            for old, new in replacements.items():
+                updated = updated.replace(old, new)
+            if updated != text:
+                page.write_text(updated, encoding="utf-8", newline="\n")
 
     @staticmethod
     def _write_new(document: Mapping[str, Any], path: Path) -> None:

@@ -68,6 +68,40 @@ class SourceCoverageTests(unittest.TestCase):
 
         self.assertEqual(first, second)
 
+    def test_native_token_content_credits_opaque_token_page_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(
+                name="Kamino",
+                docs_url="https://kamino.example/docs",
+            )
+            workspace.sources_directory.mkdir(parents=True, exist_ok=True)
+            (workspace.sources_directory / "kmno.md").write_text(
+                "KMNO is the native token of Kamino Finance.\n",
+                encoding="utf-8",
+            )
+
+            summary = ensure_source_coverage(workspace)
+
+        self.assertEqual(summary.categories["tokenomics"], "collected")
+
+    def test_unrelated_native_token_mention_does_not_credit_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(
+                name="Example",
+                docs_url="https://docs.example.test",
+            )
+            workspace.sources_directory.mkdir(parents=True, exist_ok=True)
+            (workspace.sources_directory / "overview.md").write_text(
+                "SOL is the native token of Solana.\n",
+                encoding="utf-8",
+            )
+
+            summary = ensure_source_coverage(workspace)
+
+        self.assertEqual(summary.categories["tokenomics"], "missing")
+
 
 if __name__ == "__main__":
     unittest.main()

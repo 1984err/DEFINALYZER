@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -36,9 +38,12 @@ from .market_data import refresh_market_data
 from .obsidian_links import insert_verification_links
 from .providers import ProviderError, create_provider
 from .registry_workflow import (
+    TokenRecord,
+    project_tokens,
     registry_needs_token_discovery,
     refresh_token_pages_from_registry,
     run_registry_workflow,
+    upsert_manual_token,
 )
 from .settings import SettingsManager
 from .source_coverage import (
@@ -383,8 +388,10 @@ def run_menu(
         print_fn("12. Refresh current token supply data")
         print_fn("13. Explain a research-page entry")
         print_fn("14. Manage official sources")
-        print_fn("15. Exit")
-        choice = input_fn("Choice [1-15]: ").strip()
+        print_fn("15. Add or update a token manually")
+        print_fn("16. Refresh Obsidian vault indexes")
+        print_fn("17. Exit")
+        choice = input_fn("Choice [1-17]: ").strip()
 
         try:
             if choice == "1":
@@ -496,10 +503,23 @@ def run_menu(
                     print_fn=print_fn,
                 )
             elif choice == "15":
+                workspace = _menu_project(manager, input_fn, print_fn)
+                _menu_manual_token(
+                    manager,
+                    workspace,
+                    input_fn=input_fn,
+                    print_fn=print_fn,
+                )
+            elif choice == "16":
+                paths = manager.refresh_vault_indexes()
+                print_fn(f"Refreshed {len(paths)} vault indexes.")
+                for path in paths:
+                    print_fn(f"Index: {path}")
+            elif choice == "17":
                 print_fn("Goodbye.")
                 return 0
             else:
-                print_fn("Please enter a number from 1 to 15.")
+                print_fn("Please enter a number from 1 to 17.")
         except (OSError, RuntimeError, ValueError) as exc:
             print_fn(f"Stopped: {exc}")
 
@@ -773,6 +793,24 @@ def _complete_workflow(
 ) -> int:
     """Run or resume the complete research workflow through verification."""
 
+    with _project_workflow_lock(workspace):
+        return _run_complete_workflow(
+            manager,
+            workspace,
+            refresh=refresh,
+            print_fn=print_fn,
+        )
+
+
+def _run_complete_workflow(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    refresh: bool,
+    print_fn: PrintFunction,
+) -> int:
+    """Internal implementation protected by the per-project run lock."""
+
     print_fn(f"Complete workflow: {workspace.name}")
     print_fn("Existing generated outputs will be reused." if not refresh else
              "Refresh enabled: sources and generated research will be rebuilt.")
@@ -780,7 +818,18 @@ def _complete_workflow(
     source_pages = _collected_source_pages(workspace)
     primary_pages = _collected_primary_source_pages(workspace)
     docs_url = workspace.document.get("docs_url")
-    should_crawl = refresh or bool(docs_url and not primary_pages)
+    crawl_status = str(
+        workspace.document.get("stages", {})
+        .get("crawl", {})
+        .get("status", "not_started")
+    )
+    should_crawl = refresh or bool(
+        docs_url
+        and (
+            not primary_pages
+            or crawl_status in {"partial", "blocked", "pending"}
+        )
+    )
     if should_crawl:
         if not docs_url:
             raise ValueError(
@@ -889,6 +938,46 @@ def _complete_workflow(
     return 0
 
 
+@contextmanager
+def _project_workflow_lock(workspace: ProjectWorkspace):
+    """Prevent two complete workflows from writing one project concurrently."""
+    lock_path = workspace.project_root / ".complete-workflow.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+b")
+    if lock_path.stat().st_size == 0:
+        handle.write(b"0")
+        handle.flush()
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, BlockingIOError) as exc:
+        handle.close()
+        raise RuntimeError(
+            f"A complete workflow is already running for {workspace.name}. "
+            "Wait for it to finish before starting another."
+        ) from exc
+    try:
+        yield
+    finally:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
 def _collected_source_pages(
     workspace: ProjectWorkspace,
 ) -> tuple[Path, ...]:
@@ -987,6 +1076,74 @@ def _registry(
         )
     print_fn(f"Linked research pages: {len(result.linked_pages)}")
     return 0
+
+
+def _menu_manual_token(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    input_fn: InputFunction,
+    print_fn: PrintFunction,
+) -> None:
+    """Create or revise one sourced protocol/chain token without AI."""
+    existing = project_tokens(workspace)
+    if existing:
+        print_fn("Current token records:")
+        for row in existing:
+            print_fn(f"  {row.symbol}: {row.name}")
+    else:
+        print_fn("No token records exist yet.")
+
+    symbol = _required(input_fn, "Token symbol: ").upper()
+    current = next(
+        (row for row in existing if row.symbol.casefold() == symbol.casefold()),
+        None,
+    )
+
+    def field(label: str, attribute: str, default: str) -> str:
+        prior = getattr(current, attribute) if current else default
+        value = input_fn(f"{label} [{prior}]: ").strip()
+        return value or prior
+
+    token = TokenRecord(
+        name=field("Token name", "name", symbol),
+        symbol=symbol,
+        token_type=field("Type", "token_type", "Not documented"),
+        protocol_relationship=field(
+            "Relationship to project",
+            "protocol_relationship",
+            "Not documented",
+        ),
+        network=field("Network", "network", "Not documented"),
+        standard=field("Token standard", "standard", "Not documented"),
+        address=field("Contract address or mint", "address", "Not documented"),
+        # Current supply statistics are intentionally owned by the separate,
+        # deterministic market-data refresh rather than manual or AI entry.
+        supply="Not documented",
+        maximum_supply="Not documented",
+        circulating_supply="Not documented",
+        emissions=field("Emissions", "emissions", "Not documented"),
+        allocation=field("Allocation", "allocation", "Not documented"),
+        unlocks=field("Vesting/unlocks", "unlocks", "Not documented"),
+        mint_authority=field(
+            "Mint authority or issuance control",
+            "mint_authority",
+            "Not documented",
+        ),
+        utility=field("Utility/value rights", "utility", "Not documented"),
+        source=field("Official source URL or source note", "source", ""),
+    )
+    result = upsert_manual_token(workspace=workspace, token=token)
+    print_fn(f"Saved token {token.symbol} in {result.registry_path}")
+    for page in result.token_pages:
+        if page.parent.name.casefold() == token.symbol.casefold():
+            print_fn(f"Token page: {page}")
+
+    if token.address.casefold() != "not documented" and _yes_no(
+        input_fn,
+        "Refresh CoinGecko supply data now? [y/N]: ",
+    ):
+        _market_data(workspace, force=True, print_fn=print_fn)
 
 
 def _market_data(
@@ -1357,7 +1514,8 @@ def _verification_plan(
         f"Research links: {links.inserted_links}; "
         f"unresolved: {len(links.unresolved_mappings)}"
     )
-    return 0 if result.job_path else 2
+    # A manual-only checklist is a successful planning outcome, not an error.
+    return 0
 
 
 def _evaluate(
@@ -1400,9 +1558,7 @@ def _review(
     proposals = pending_proposals(workspace)
     if not proposals:
         refresh_verification_summary(
-            workspace.vault_root
-            / "Verification"
-            / f"{workspace.name} - Verification.md"
+            workspace.verification_page_path
         )
         print_fn("No pending evaluation proposals.")
         return 0

@@ -89,8 +89,13 @@ def _sync_primary_corpus_categories(workspace: ProjectWorkspace) -> None:
     primary = workspace.document.get("docs_url")
     if not isinstance(primary, str) or not primary.strip():
         return
-    relative_names = [
-        file.relative_to(workspace.sources_directory).as_posix().casefold()
+    pages = [
+        (
+            file.relative_to(workspace.sources_directory)
+            .as_posix()
+            .casefold(),
+            file.read_text(encoding="utf-8")[:8_000].casefold(),
+        )
         for file in workspace.sources_directory.rglob("*.md")
         if file.name.casefold() != "_source_coverage.md"
     ]
@@ -108,9 +113,24 @@ def _sync_primary_corpus_categories(workspace: ProjectWorkspace) -> None:
     changed = False
     for category, terms in keywords.items():
         key = (category, primary.strip().casefold())
-        if key in existing or not any(
-            any(term in name for term in terms) for name in relative_names
-        ):
+        named_page = any(
+            any(term in name for term in terms) for name, _ in pages
+        )
+        entity_pattern = re.escape(workspace.name.casefold())
+        content_page = category == "tokenomics" and any(
+            re.search(
+                rf"\b(?:native|governance)\s+token\s+of\s+"
+                rf"(?:the\s+)?{entity_pattern}\b",
+                content,
+            )
+            or re.search(
+                r"\b(?:the\s+)?protocol(?:'s)?\s+"
+                r"(?:native|governance)\s+token\b",
+                content,
+            )
+            for _, content in pages
+        )
+        if key in existing or not (named_page or content_page):
             continue
         sources.append(
             OfficialSource(

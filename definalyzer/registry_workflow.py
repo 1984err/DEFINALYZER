@@ -33,6 +33,7 @@ TOKEN_SCOPE = (
     "debt tokens, vault shares, wrappers, receipt tokens, LP tokens, and "
     "assets created by protocol users."
 )
+TOKEN_DISCOVERY_VERSION = 2
 PLACEHOLDER_IDENTITIES = {
     "-",
     "n/a",
@@ -67,7 +68,11 @@ AAVE_CORE_COMPONENTS = frozenset(
 DOCUMENTED_CHAINS = {
     "arbitrum": ("Arbitrum", 42161),
     "base": ("Base", 8453),
+    "blast": ("Blast", 81457),
+    "derive": ("Derive", 957),
     "ethereum": ("Ethereum", 1),
+    "mode": ("Mode", 34443),
+    "optimism": ("Optimism", 10),
     "plasma": ("Plasma", None),
     "solana": ("Solana", None),
 }
@@ -123,6 +128,113 @@ class RegistryResult:
     tokens: tuple[TokenRecord, ...]
     addresses: tuple[AddressRecord, ...]
     address_page: Path | None
+
+
+def project_tokens(workspace: ProjectWorkspace) -> tuple[TokenRecord, ...]:
+    return _load_existing_tokens(workspace.registry_directory / "registry.json")
+
+
+def upsert_manual_token(
+    *,
+    workspace: ProjectWorkspace,
+    token: TokenRecord,
+) -> RegistryResult:
+    """Add or replace one sourced token record without invoking AI."""
+    _validate_manual_token(token)
+    registry_path = workspace.registry_directory / "registry.json"
+    existing_document: dict[str, Any] = {}
+    if registry_path.exists():
+        loaded = json.loads(registry_path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError("Project registry must be a JSON object.")
+        existing_document = loaded
+
+    by_symbol = {
+        row.symbol.casefold(): row for row in _load_existing_tokens(registry_path)
+    }
+    by_symbol[token.symbol.casefold()] = token
+    tokens = tuple(sorted(by_symbol.values(), key=lambda row: row.symbol.casefold()))
+
+    address_rows = existing_document.get("addresses", [])
+    addresses = tuple(
+        AddressRecord(
+            **{
+                field: row[field]
+                for field in AddressRecord.__dataclass_fields__
+            }
+        )
+        for row in address_rows
+        if isinstance(row, dict)
+        and set(AddressRecord.__dataclass_fields__).issubset(row)
+    )
+    document = {
+        **existing_document,
+        "schema_version": 1,
+        "entity": workspace.name,
+        "entity_type": workspace.document["entity_type"],
+        "generated_at": _timestamp(),
+        "token_discovery_version": TOKEN_DISCOVERY_VERSION,
+        "token_discovery_status": "manual_entries",
+        "source_coverage": ensure_source_coverage(workspace).status,
+        "scope": (
+            "Protocol-native/governance and protocol-issued economic tokens "
+            "only; external and reserve assets excluded."
+        ),
+        "tokens": [asdict(row) for row in tokens],
+        "addresses": [asdict(row) for row in addresses],
+        "networks": existing_document.get("networks", []),
+        "sources": existing_document.get("sources", []),
+    }
+    _write_generated_json(registry_path, document)
+    token_pages = tuple(
+        _write_token_page(workspace, row, addresses) for row in tokens
+    )
+    linked_pages = link_token_references(
+        workspace.vault_entity_directory,
+        tokens,
+    )
+    address_page = (
+        workspace.vault_entity_directory / "Registry.md"
+        if addresses
+        else None
+    )
+    _update_protocol_index(
+        workspace,
+        list(tokens),
+        workspace.vault_entity_directory / "Networks.md"
+        if (workspace.vault_entity_directory / "Networks.md").exists()
+        else None,
+        address_page,
+    )
+    return RegistryResult(
+        registry_path=registry_path,
+        network_page=None,
+        token_pages=token_pages,
+        linked_pages=linked_pages,
+        tokens=tokens,
+        addresses=addresses,
+        address_page=address_page,
+    )
+
+
+def _validate_manual_token(token: TokenRecord) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,19}", token.symbol):
+        raise ValueError(
+            "Token symbol must be 1-20 letters, numbers, dots, underscores, "
+            "or hyphens."
+        )
+    if token.name.strip().casefold() in PLACEHOLDER_IDENTITIES:
+        raise ValueError("Token name cannot be a placeholder.")
+    if token.symbol.strip().casefold() in PLACEHOLDER_IDENTITIES:
+        raise ValueError("Token symbol cannot be a placeholder.")
+    if not token.source.strip() or token.source.casefold() in PLACEHOLDER_IDENTITIES:
+        raise ValueError("Manual token entry requires a source URL or source note.")
+    address = token.address.strip()
+    if address.casefold() not in PLACEHOLDER_IDENTITIES:
+        valid_evm = bool(re.fullmatch(r"0x[a-fA-F0-9]{40}", address))
+        valid_solana = bool(re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", address))
+        if not (valid_evm or valid_solana):
+            raise ValueError("Token address must be an EVM address or Solana mint.")
 
 
 def run_registry_workflow(
@@ -191,6 +303,7 @@ def run_registry_workflow(
         "entity_type": workspace.document["entity_type"],
         "generated_at": _timestamp(),
         "tokenomics_digest": _file_digest(tokenomics),
+        "token_discovery_version": TOKEN_DISCOVERY_VERSION,
         "token_discovery_status": (
             "complete"
             if token_coverage_complete(workspace)
@@ -246,6 +359,9 @@ def discover_native_tokens(
         "A qualifying token must have a specifically documented name or "
         "symbol and protocol-level economics. Tokens created by users of the "
         "protocol do not qualify merely because the protocol creates them. "
+        "If the symbol is documented but no distinct formal name is given, "
+        "use the symbol as the name; do not return an empty list solely "
+        "because a separate long-form name is absent. "
         "If no qualifying token is documented, return exactly "
         '{"tokens":[]}. Never create a placeholder token. '
         "Return strict JSON with this shape:\n"
@@ -526,6 +642,10 @@ def _extract_documented_addresses(
         lines = path.read_text(encoding="utf-8").splitlines()
         in_code = False
         current_chain: tuple[str, int | None] | None = None
+        current_section: str | None = None
+        pending_split_heading = False
+        exclude_testnet_section = False
+        table_headers: tuple[str, ...] | None = None
         previous_label: str | None = None
         for line_number, line in enumerate(lines, start=1):
             if line.lstrip().startswith("```"):
@@ -533,11 +653,81 @@ def _extract_documented_addresses(
                 continue
             if in_code:
                 continue
-            heading = re.match(r"^##\s+(?P<heading>.+)$", line.strip())
-            if heading:
-                current_chain = _chain_from_heading(heading.group("heading"))
+            if re.fullmatch(r"#{1,6}\s*", line.strip()):
+                pending_split_heading = True
+                current_section = None
+                current_chain = None
+                table_headers = None
                 previous_label = None
                 continue
+            if pending_split_heading and line.strip():
+                if re.fullmatch(r"\[\]\([^)]+\)", line.strip()):
+                    continue
+                heading_text = re.sub(
+                    r"\[([^\]]+)\]\([^)]+\)", r"\1", line.strip()
+                ).strip(" #")
+                if heading_text:
+                    current_section = heading_text
+                    current_chain = _chain_from_heading(heading_text)
+                    normalized_heading = heading_text.casefold()
+                    if "testnet" in normalized_heading:
+                        exclude_testnet_section = True
+                    elif "mainnet" in normalized_heading:
+                        exclude_testnet_section = False
+                pending_split_heading = False
+                continue
+            heading = re.match(
+                r"^#{1,6}\s+(?P<heading>.+)$", line.strip()
+            )
+            if heading:
+                heading_text = re.sub(
+                    r"\[([^\]]+)\]\([^)]+\)",
+                    r"\1",
+                    heading.group("heading"),
+                ).strip()
+                current_section = heading_text or None
+                current_chain = _chain_from_heading(heading_text)
+                normalized_heading = heading_text.casefold()
+                if "testnet" in normalized_heading:
+                    exclude_testnet_section = True
+                elif "mainnet" in normalized_heading:
+                    exclude_testnet_section = False
+                table_headers = None
+                previous_label = None
+                continue
+            if exclude_testnet_section:
+                continue
+            table_cells = _markdown_table_cells(line)
+            if table_cells:
+                if _is_markdown_separator_row(table_cells):
+                    continue
+                lowered_cells = tuple(cell.casefold() for cell in table_cells)
+                if (
+                    "chain" in lowered_cells
+                    and any(
+                        "address" in cell or "bridge" in cell
+                        for cell in lowered_cells
+                    )
+                ) or (
+                    lowered_cells
+                    and lowered_cells[0]
+                    in {"component", "contract", "name", "token"}
+                    and len(lowered_cells) > 1
+                ):
+                    table_headers = table_cells
+                    continue
+                if table_headers and len(table_cells) == len(table_headers):
+                    table_records = _address_records_from_table_row(
+                        headers=table_headers,
+                        cells=table_cells,
+                        section=current_section,
+                        source=f"{relative}#L{line_number}",
+                    )
+                    if table_records:
+                        records.extend(table_records)
+                        continue
+            elif line.strip():
+                table_headers = None
             evm_addresses = list(dict.fromkeys(EVM_ADDRESS_PATTERN.findall(line)))
             solana_addresses = (
                 list(dict.fromkeys(SOLANA_ADDRESS_PATTERN.findall(line)))
@@ -597,6 +787,124 @@ def _extract_documented_addresses(
                         provenance="documented",
                     )
                 )
+    return tuple(records)
+
+
+def _markdown_table_cells(line: str) -> tuple[str, ...]:
+    stripped = line.strip()
+    if not (stripped.startswith("|") and stripped.endswith("|")):
+        return ()
+    return tuple(cell.strip() for cell in stripped[1:-1].split("|"))
+
+
+def _is_markdown_separator_row(cells: tuple[str, ...]) -> bool:
+    return bool(cells) and all(
+        re.fullmatch(r":?-{3,}:?", cell.replace(" ", ""))
+        for cell in cells
+    )
+
+
+def _address_records_from_table_row(
+    *,
+    headers: tuple[str, ...],
+    cells: tuple[str, ...],
+    section: str | None,
+    source: str,
+) -> tuple[AddressRecord, ...]:
+    chain_index = next(
+        (
+            index
+            for index, header in enumerate(headers)
+            if header.strip().casefold() in {"chain", "network"}
+        ),
+        None,
+    )
+    if chain_index is None:
+        name_index = next(
+            (
+                index
+                for index, header in enumerate(headers)
+                if header.strip().casefold()
+                in {"component", "contract", "name", "token"}
+            ),
+            None,
+        )
+        if name_index is None:
+            return ()
+        name = cells[name_index].strip() or section or "DOCUMENTED_ADDRESS"
+        records = []
+        for index, (header, cell) in enumerate(zip(headers, cells)):
+            if index == name_index:
+                continue
+            addresses = tuple(dict.fromkeys(EVM_ADDRESS_PATTERN.findall(cell)))
+            if not addresses:
+                continue
+            chain = _chain_from_heading(header)
+            if chain is None:
+                chain = (header.strip() or "Not documented", None)
+            chain_name, chain_id = chain
+            for address in addresses:
+                records.append(
+                    AddressRecord(
+                        name=name,
+                        component_type="Documented contract",
+                        role=f"Published {name} address",
+                        address=address,
+                        chain=chain_name,
+                        chain_id=chain_id,
+                        deployment_block=None,
+                        status=(
+                            "documented"
+                            if chain_name in AUTO_COLLECTOR_CHAINS
+                            else "documented_unresolved"
+                        ),
+                        source=source,
+                        provenance="documented",
+                    )
+                )
+        return tuple(records)
+    chain = _chain_from_heading(cells[chain_index])
+    if chain is None:
+        chain = (cells[chain_index].strip() or "Not documented", None)
+    chain_name, chain_id = chain
+    records = []
+    for index, (header, cell) in enumerate(zip(headers, cells)):
+        if index == chain_index:
+            continue
+        addresses = tuple(dict.fromkeys(EVM_ADDRESS_PATTERN.findall(cell)))
+        if not addresses:
+            continue
+        normalized_header = header.strip().casefold()
+        if "address" not in normalized_header and "bridge" not in normalized_header:
+            continue
+        base_name = section or header.strip() or "DOCUMENTED_ADDRESS"
+        if "bridge" in normalized_header:
+            name = f"{base_name} Bridge"
+            component_type = "Bridge"
+            role = f"Published {base_name} bridge address"
+        else:
+            name = base_name
+            component_type = "Token" if "token" in normalized_header else "Documented contract"
+            role = f"Published {base_name} {header.strip().lower()}"
+        for address in addresses:
+            records.append(
+                AddressRecord(
+                    name=name,
+                    component_type=component_type,
+                    role=role,
+                    address=address,
+                    chain=chain_name,
+                    chain_id=chain_id,
+                    deployment_block=None,
+                    status=(
+                        "documented"
+                        if chain_name in AUTO_COLLECTOR_CHAINS
+                        else "documented_unresolved"
+                    ),
+                    source=source,
+                    provenance="documented",
+                )
+            )
     return tuple(records)
 
 
@@ -1228,6 +1536,8 @@ def _token_discovery_complete(
         and
         isinstance(document, dict)
         and document.get("token_discovery_status") == "complete"
+        and document.get("token_discovery_version")
+        == TOKEN_DISCOVERY_VERSION
         and document.get("tokenomics_digest") == tokenomics_digest
     )
 

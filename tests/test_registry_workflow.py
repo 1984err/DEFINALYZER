@@ -186,6 +186,75 @@ class RegistryWorkflowTests(unittest.TestCase):
             )
         )
 
+    def test_parses_chain_address_bridge_tables_with_section_context(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "contracts.md").write_text(
+                "## \n"
+                "Example Vault\n"
+                "[](https://docs.example/contracts#example-vault)\n"
+                "| Chain | Token Address | Bridge |\n"
+                "|---|---|---|\n"
+                "| Ethereum | 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | "
+                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb |\n"
+                "| Derive | 0xcccccccccccccccccccccccccccccccccccccccc | "
+                "0xdddddddddddddddddddddddddddddddddddddddd |\n",
+                encoding="utf-8",
+            )
+
+            records = _extract_documented_addresses(root)
+
+        ethereum_token = next(
+            row
+            for row in records
+            if row.chain == "Ethereum" and row.component_type == "Token"
+        )
+        ethereum_bridge = next(
+            row
+            for row in records
+            if row.chain == "Ethereum" and row.component_type == "Bridge"
+        )
+        derive_token = next(
+            row
+            for row in records
+            if row.chain == "Derive" and row.component_type == "Token"
+        )
+        self.assertEqual(ethereum_token.name, "Example Vault")
+        self.assertEqual(ethereum_token.chain_id, 1)
+        self.assertEqual(ethereum_token.status, "documented")
+        self.assertEqual(ethereum_bridge.name, "Example Vault Bridge")
+        self.assertEqual(derive_token.chain_id, 957)
+        self.assertEqual(derive_token.status, "documented_unresolved")
+
+    def test_parses_network_columns_and_excludes_testnet_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "contracts.md").write_text(
+                "## Governance\n"
+                "| Contract | Ethereum | Goerli |\n"
+                "|---|---|---|\n"
+                "| Governor | 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | "
+                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb |\n"
+                "# \n"
+                "Testnet\n"
+                "## Example Token\n"
+                "| Chain | Token Address | Bridge |\n"
+                "|---|---|---|\n"
+                "| Ethereum | 0xcccccccccccccccccccccccccccccccccccccccc | "
+                "0xdddddddddddddddddddddddddddddddddddddddd |\n",
+                encoding="utf-8",
+            )
+
+            records = _extract_documented_addresses(root)
+
+        self.assertEqual(len(records), 2)
+        mainnet = next(row for row in records if row.chain == "Ethereum")
+        testnet = next(row for row in records if row.chain == "Goerli")
+        self.assertEqual(mainnet.name, "Governor")
+        self.assertEqual(mainnet.status, "documented")
+        self.assertEqual(testnet.name, "Governor")
+        self.assertEqual(testnet.status, "documented_unresolved")
+
     def test_excludes_bulk_address_catalogs_and_tutorials_from_registry(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

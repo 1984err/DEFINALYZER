@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from definalyzer.app import OUTPUT_FILES, main
+from definalyzer.app import OUTPUT_FILES, _project_workflow_lock, main
 from definalyzer.providers import ProviderResponse
 from definalyzer.workspace import WorkspaceManager
 
@@ -54,7 +54,7 @@ class UnifiedAppTests(unittest.TestCase):
                         "",
                         "",
                         "n",
-                        "15",
+                        "17",
                     ]
                 ),
                 print_fn=messages.append,
@@ -144,6 +144,43 @@ class UnifiedAppTests(unittest.TestCase):
         self.assertEqual(calls, list(OUTPUT_FILES))
         registry.assert_called_once()
         verification_plan.assert_called_once()
+
+    @patch("definalyzer.app._crawl", return_value=2)
+    def test_complete_workflow_recrawls_partial_sources_and_stops(self, crawl):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace_root = Path(directory) / "output"
+            manager = WorkspaceManager(workspace_root)
+            project = manager.create_project(
+                name="Partial",
+                docs_url="https://docs.example.test",
+            )
+            (project.sources_directory / "one-page.md").write_text(
+                "# Incomplete",
+                encoding="utf-8",
+            )
+            project = manager.update_stage(
+                project,
+                "crawl",
+                "partial",
+                detail="1 saved, 68 failed",
+            )
+
+            exit_code = main(
+                ["--workspace", str(workspace_root), "all", project.slug],
+            )
+
+        self.assertEqual(exit_code, 1)
+        crawl.assert_called_once()
+
+    def test_complete_workflow_lock_rejects_overlapping_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            project = manager.create_project(name="Locked")
+
+            with _project_workflow_lock(project):
+                with self.assertRaisesRegex(RuntimeError, "already running"):
+                    with _project_workflow_lock(project):
+                        pass
 
     @patch("definalyzer.app.run_collector_menu", return_value=0)
     def test_collect_uses_existing_collector_and_updates_stage(self, collector):

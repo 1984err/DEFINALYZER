@@ -80,7 +80,7 @@ For every claim, use this compact structure:
 
 | Field | Value |
 |---|---|
-| Status | Pending |
+| Status | Pending for Automated or Assisted; Manual review for Manual |
 | Claim | Exact concise claim |
 | Materiality | One sentence explaining what assessment could change |
 | Research source | Obsidian note and heading |
@@ -99,6 +99,8 @@ For every claim, use this compact structure:
 Use `Automated` only when the included collector request can directly gather
 the required evidence. Use `Assisted` when automation gathers only part of the
 evidence. Use `Manual` when no collector request is safe or sufficient. Keep
+`Status` consistent with that route: use `Manual review` for a Manual route
+and `Pending` for an Automated or Assisted route. Keep
 `Materiality`, `How to check`, and `Likely source` concise. Do not add
 explanatory paragraphs.
 

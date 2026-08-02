@@ -534,6 +534,29 @@ def extract_research_page_chunked(
             )
         )
 
+    final_source_prefix = (
+        FINAL_CONSOLIDATION_INSTRUCTIONS
+        + "\n\n"
+        "# Extracted Fact Ledgers\n\n"
+        "The following ledgers were extracted only from the crawled "
+        "documentation. Consolidate them into the required page. "
+        "Deduplicate facts and preserve source-file references only when "
+        "the output template requests provenance.\n\n"
+        "Use the following coverage metadata to qualify all absence "
+        "claims. Missing coverage means a topic was not assessed; it does "
+        "not prove that a feature or asset does not exist.\n\n"
+        + coverage_markdown(workspace)
+        + "\n\n"
+        + source_inventory_markdown(workspace)
+        + "\n\n"
+    )
+    final_prompt_overhead = len(
+        build_extraction_prompt(
+            master_prompt=master,
+            template=template,
+            source_bundle=final_source_prefix,
+        )
+    )
     reduced, reduction_calls, reduction_reused = _reduce_ledgers(
         ledgers=tuple(ledgers),
         provider=provider,
@@ -541,15 +564,7 @@ def extract_research_page_chunked(
         reductions_directory=reductions_directory,
         maximum_prompt_characters=maximum_prompt_characters,
         target_characters=(
-            maximum_prompt_characters
-            - len(
-                build_extraction_prompt(
-                    master_prompt=master,
-                    template=template,
-                    source_bundle="placeholder",
-                )
-            )
-            - 600
+            maximum_prompt_characters - final_prompt_overhead - 200
         ),
         progress=report,
     )
@@ -559,23 +574,7 @@ def extract_research_page_chunked(
     final_prompt = build_extraction_prompt(
         master_prompt=master,
         template=template,
-        source_bundle=(
-            FINAL_CONSOLIDATION_INSTRUCTIONS
-            + "\n\n"
-            "# Extracted Fact Ledgers\n\n"
-            "The following ledgers were extracted only from the crawled "
-            "documentation. Consolidate them into the required page. "
-            "Deduplicate facts and preserve source-file references only when "
-            "the output template requests provenance.\n\n"
-            "Use the following coverage metadata to qualify all absence "
-            "claims. Missing coverage means a topic was not assessed; it does "
-            "not prove that a feature or asset does not exist.\n\n"
-            + coverage_markdown(workspace)
-            + "\n\n"
-            + source_inventory_markdown(workspace)
-            + "\n\n"
-            + reduced
-        ),
+        source_bundle=final_source_prefix + reduced,
     )
     _ensure_prompt_size(final_prompt, maximum_prompt_characters)
     response = provider.generate(

@@ -41,7 +41,7 @@ def insert_verification_links(
     changed: list[Path] = []
     unresolved: list[str] = []
     inserted = 0
-    verification_name = verification_page.stem
+    verification_target = _verification_target(verification_page)
 
     for note_key, note_mappings in sorted(by_note.items()):
         path = _find_note(research_directory, note_key)
@@ -81,7 +81,7 @@ def insert_verification_links(
             if not rows:
                 continue
             links = " · ".join(
-                f"[[Verification/{verification_name}#^{block_id}|"
+                f"[[{verification_target}#^{block_id}|"
                 f"{verification_id}]]"
                 for verification_id, block_id in sorted(rows)
             )
@@ -103,6 +103,14 @@ def insert_verification_links(
         inserted_links=inserted,
         unresolved_mappings=tuple(unresolved),
     )
+
+
+def _verification_target(page: Path) -> str:
+    parts = page.with_suffix("").parts
+    folded = tuple(part.casefold() for part in parts)
+    if "verification" not in folded:
+        return page.stem
+    return "/".join(parts[folded.index("verification") :])
 
 
 def _parse_link_map(text: str) -> tuple[_Mapping, ...]:
@@ -203,7 +211,7 @@ def _normalize_markdown_spacing(text: str) -> str:
         ):
             normalized.append("")
         normalized.append(line)
-    return "\n".join(normalized)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(normalized))
 
 
 def strip_generated_verification_links(text: str) -> str:
@@ -212,6 +220,15 @@ def strip_generated_verification_links(text: str) -> str:
         re.DOTALL,
     )
     cleaned = legacy_pattern.sub("\n", text)
+    # Match the entire generated line regardless of whether it contains one
+    # link or several links separated by a Unicode middle dot.
+    cleaned = re.sub(
+        r"(?m)^[ \t]*Verification:[ \t]+"
+        r"\[\[Verification/[^\r\n]+$\r?\n?",
+        "",
+        cleaned,
+    )
+    return re.sub(r"\n{3,}", "\n\n", cleaned)
     generated_line = re.compile(
         r"(?m)^\s*Verification:\s+"
         r"\[\[Verification/[^\r\n]+\]\]"
