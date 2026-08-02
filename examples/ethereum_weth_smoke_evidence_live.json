@@ -120,7 +120,7 @@
       "collection_error": null
     }
   ],
-  "job_source": "C:\\Users\\Valentin\\Documents\\PYTHON SCRIPTS\\DEFI RESEARCH\\TOOLS\\DEFINALYZER\\examples\\ethereum_weth_smoke_job.json",
+  "job_source": "examples/ethereum_weth_smoke_job.json",
   "job_metadata": {
     "purpose": "Exercise the raw collector against a stable public Ethereum contract.",
     "interpretation": "None. This job only collects raw node responses."

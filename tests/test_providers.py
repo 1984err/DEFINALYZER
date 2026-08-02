@@ -39,6 +39,9 @@ class HermesProviderTests(unittest.TestCase):
         call = runner.call_args
         command = call.args[0]
         self.assertIn("--ignore-rules", command)
+        self.assertIn("--toolsets", command)
+        toolsets_index = command.index("--toolsets")
+        self.assertEqual(command[toolsets_index + 1], ",")
         self.assertEqual(command[-2:], ("-z", "full extraction prompt"))
         self.assertNotIn("input", call.kwargs)
         self.assertTrue(call.kwargs["capture_output"])

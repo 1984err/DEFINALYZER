@@ -36,7 +36,10 @@ crawler. The blockchain collector and project manager do not require it when
 used independently.
 
 Hermes is installed and authenticated separately. DEFINALYZER does not store
-Hermes credentials. Configure and test the connection once:
+Hermes credentials. Automated provider calls use an explicit empty toolset
+allowlist, so crawled documentation is processed as text and cannot ask Hermes
+to run terminal, browser, file, or other agent tools. Configure and test the
+connection once:
 
 ```powershell
 python main.py provider configure

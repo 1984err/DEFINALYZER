@@ -441,7 +441,7 @@
       "collection_error": null
     }
   ],
-  "job_source": "C:\\Users\\Valentin\\Documents\\PYTHON SCRIPTS\\DEFI RESEARCH\\TOOLS\\DEFINALYZER\\examples\\ethereum_weth_mvp_job.json",
+  "job_source": "examples/ethereum_weth_mvp_job.json",
   "job_metadata": {
     "purpose": "End-to-end validation of token and contract snapshot recipes.",
     "interpretation": "None. This job only collects raw and mechanically decoded evidence."

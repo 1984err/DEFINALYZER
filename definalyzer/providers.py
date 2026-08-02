@@ -11,6 +11,10 @@ from typing import Mapping, Protocol
 
 
 WINDOWS_SAFE_PROMPT_CHARS = 28_000
+# Hermes treats an explicitly supplied comma-only toolset value as an empty
+# allowlist. This keeps one-shot extraction inference-only while preserving the
+# user's configured provider/model (which --safe-mode would ignore).
+HERMES_NO_TOOLSETS = ","
 
 
 class ProviderError(RuntimeError):
@@ -74,6 +78,8 @@ class HermesCliProvider:
         command = (
             str(self.executable),
             "--ignore-rules",
+            "--toolsets",
+            HERMES_NO_TOOLSETS,
             "-z",
             prompt,
         )
