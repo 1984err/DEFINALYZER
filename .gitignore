@@ -8,6 +8,18 @@ output/
 dist/
 build/
 
+# Local planning / diagnostic artifacts
+BETA_TODO.md
+*.log
+.coverage
+htmlcov/
+.codex/
+.agents/
+*.pem
+*.key
+*.p12
+*.pfx
+
 # Python
 __pycache__/
 *.py[cod]
@@ -15,6 +27,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv-*/
 venv/
 
 # Node

@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .providers import TextProvider
+from .verification_state import (
+    evidence_job_fingerprint,
+    verification_job_fingerprint,
+)
 from .workspace import ProjectWorkspace
+from .verification_planning import write_verification_catalog
 
 
 PROPOSAL_STATUSES = {
@@ -28,6 +33,7 @@ class EvaluationGenerationResult:
     proposals: tuple[Path, ...]
     reused: int
     unmatched_evidence: tuple[Path, ...]
+    ignored_stale_evidence: tuple[Path, ...]
 
 
 @dataclass(frozen=True)
@@ -49,12 +55,49 @@ def generate_evaluation_proposals(
     pending = workspace.project_root / "evaluations" / "pending"
     proposals: list[Path] = []
     unmatched: list[Path] = []
+    ignored_stale: list[Path] = []
     reused = 0
+
+    planned_job = workspace.jobs_directory / "verification-plan.json"
+    current_fingerprint = (
+        verification_job_fingerprint(planned_job)
+        if planned_job.exists()
+        else None
+    )
+    current_job_name = None
+    if planned_job.exists():
+        job_document = _read_json(planned_job)
+        name = job_document.get("name")
+        current_job_name = name if isinstance(name, str) else None
 
     for evidence_path in sorted(workspace.evidence_directory.glob("*.json")):
         if evidence_path.name.endswith("-import-report.json"):
             continue
         bundle = _read_json(evidence_path)
+        bundle_fingerprint = evidence_job_fingerprint(bundle)
+        bundle_metadata = bundle.get("job_metadata")
+        imported_verification_job = (
+            isinstance(bundle_metadata, dict)
+            and bundle_metadata.get("created_by")
+            == "verification-request-importer"
+        )
+        if current_fingerprint is None and (
+            bundle_fingerprint is not None or imported_verification_job
+        ):
+            ignored_stale.append(evidence_path)
+            if progress:
+                progress(f"Ignored obsolete planned evidence: {evidence_path.name}")
+            continue
+        if current_fingerprint is not None:
+            same_planned_name = bundle.get("job_name") == current_job_name
+            if (
+                bundle_fingerprint is not None
+                and bundle_fingerprint != current_fingerprint
+            ) or (same_planned_name and bundle_fingerprint is None):
+                ignored_stale.append(evidence_path)
+                if progress:
+                    progress(f"Ignored stale planned evidence: {evidence_path.name}")
+                continue
         matches = _match_claims(bundle, claims)
         if not matches:
             unmatched.append(evidence_path)
@@ -120,6 +163,7 @@ def generate_evaluation_proposals(
         proposals=tuple(proposals),
         reused=reused,
         unmatched_evidence=tuple(unmatched),
+        ignored_stale_evidence=tuple(ignored_stale),
     )
 
 
@@ -164,6 +208,7 @@ def review_proposal(
             result=str(proposal["reason"]),
             evidence_file=str(proposal["evidence_file"]),
         )
+        write_verification_catalog(workspace)
         verification_updated = True
 
     decision_path = (
@@ -237,6 +282,15 @@ def _match_claims(
     for record in bundle.get("records", []):
         if not isinstance(record, dict):
             continue
+        request_name = record.get("request_name")
+        if isinstance(request_name, str):
+            direct_id = request_name.upper()
+            direct_claim = claims.get(direct_id)
+            if direct_claim is not None:
+                matches.append(
+                    (direct_id, direct_claim["claim"], record)
+                )
+                continue
         record_addresses = {
             value.casefold()
             for value in ADDRESS_PATTERN.findall(json.dumps(record))
@@ -320,7 +374,9 @@ def _apply_verification_decision(
     if match is None:
         raise ValueError(f"Verification entry {verification_id} was not found.")
     body = match.group("body")
-    display_status = status.replace("_", " ").title()
+    display_status = {
+        "supported": "Confirmed",
+    }.get(status, status.replace("_", " ").title())
     replacements = {
         "Status": display_status,
         "Evidence": f"`{evidence_file}`",
@@ -355,10 +411,10 @@ def _refresh_summary_counts(text: str) -> str:
     labels = (
         "Pending",
         "Evidence collected",
-        "Manual review",
-        "Supported",
+        "Confirmed",
         "Contradicted",
         "Inconclusive",
+        "Public evidence unavailable",
     )
     for label in labels:
         count = sum(

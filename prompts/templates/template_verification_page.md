@@ -10,8 +10,9 @@ trust, security, economic, or operational assessment. Do not verify routine
 facts merely because they are observable.
 
 This page is an analyst work queue. Automation should remove routine work when
-possible, but manual entries are expected and useful. This step plans evidence
-collection; it does not decide whether a claim is true.
+possible, but analyst-routed entries are expected and useful. This step plans
+evidence collection; it does not decide whether a claim is true. Keep claim
+type, evidence availability, recommended method, and result status separate.
 
 ## Selection Rules
 
@@ -26,12 +27,20 @@ Include claims concerning:
 
 Exclude:
 
+- collection gaps, `Not documented` placeholders, and assessments that source
+  coverage is missing or partial; retain these under research Material Unknowns
 - names, addresses, ABI descriptions, and component lists
 - ordinary user workflows and interface behavior
 - low-impact configuration
 - marketing claims without a measurable evidence request
-- claims for which the available collector cannot gather relevant evidence;
-  place these under **Manual Review** instead
+
+When documented statements differ, keep both assertions and source references
+and request clarification. Do not assert that different wording proves a
+contradiction. Never invent a factual claim from missing information.
+
+Collector support determines the Check route, not whether a material claim
+qualifies. Keep manual checks in their subject categories, including on
+unsupported chains. `Manual Review` is not a subject category or a shared quota.
 
 ## Identifier Rules
 
@@ -50,13 +59,12 @@ Exclude:
 |---|---:|
 | Pending | |
 | Evidence collected | |
-| Manual review | |
-| Supported | |
+| Confirmed | |
 | Contradicted | |
 | Inconclusive | |
+| Public evidence unavailable | |
 
-Populate only current counts. New pages normally begin with pending and manual
-review entries.
+Populate only current counts. New pages normally begin with pending entries.
 
 Create only categories that contain at least one claim, using this order:
 
@@ -70,7 +78,6 @@ Create only categories that contain at least one claim, using this order:
 8. Treasury and Asset Allocation
 9. Cross-Chain Components
 10. Measurable Competitive Claims
-11. Manual Review
 
 For every claim, use this compact structure:
 
@@ -80,11 +87,15 @@ For every claim, use this compact structure:
 
 | Field | Value |
 |---|---|
-| Status | Pending for Automated or Assisted; Manual review for Manual |
+| Status | Pending |
 | Claim | Exact concise claim |
 | Materiality | One sentence explaining what assessment could change |
 | Research source | Obsidian note and heading |
 | Registry target | Component name and address, when applicable |
+| Claim type | On-chain state/events, Smart contract/code, Governance, Legal/regulatory, Organizational/private, Off-chain operational, or Market/external data |
+| Evidence availability | Public, Restricted/private, Not documented, or Unknown |
+| Recommended method | Direct RPC, Dune candidate, Official source, External database, Analyst review, or Public evidence unavailable |
+| Optional Dune query | Available; include this row only for Dune candidate methods |
 | Check route | Automated, Assisted, or Manual |
 | How to check | Short, actionable procedure an analyst can follow |
 | Likely source | Official contract, explorer, governance system, API, or documentation location |
@@ -99,10 +110,17 @@ For every claim, use this compact structure:
 Use `Automated` only when the included collector request can directly gather
 the required evidence. Use `Assisted` when automation gathers only part of the
 evidence. Use `Manual` when no collector request is safe or sufficient. Keep
-`Status` consistent with that route: use `Manual review` for a Manual route
-and `Pending` for an Automated or Assisted route. Keep
+`Status` independent from that route: all new checks begin as `Pending`.
+Use `Public evidence unavailable` only when the required evidence is known not
+to be publicly accessible; lack of documentation alone is not enough. Keep
 `Materiality`, `How to check`, and `Likely source` concise. Do not add
 explanatory paragraphs.
+
+Use `Dune candidate` conservatively for public on-chain history or aggregate
+questions that can reasonably be expressed as SQL over indexed blockchain
+data. Do not use it for legal, private, organizational, undocumented,
+forward-looking, or source-code judgment claims. The marker only offers an
+optional query-writing assistant; it does not run Dune or verify the claim.
 
 `Research source` and every Research Link Map `Claim Location` must use an
 exact Markdown heading from the named research note. Do not use a table-row
@@ -174,8 +192,9 @@ The JSON object must follow this exact shape:
 ```
 ````
 
-Use only `ethereum`, `arbitrum`, or `base`. Route other chains to Manual
-Review. Preserve registry provenance. Do not add expected values, verdicts, or
+Use only `ethereum`, `arbitrum`, or `base` in collector requests. Set Check route
+to Manual for other chains, retaining their subject categories. Preserve registry
+provenance. Do not add expected values, verdicts, or
 interpretation fields.
 
 ## Output Rules
@@ -185,7 +204,8 @@ interpretation fields.
 - Do not claim that collected evidence verifies anything.
 - Treat the page as an analyst checklist, not a guarantee of automated
   verification.
-- For manual items, provide useful checking instructions and likely official
+- Never imply that Dune is required or that every manual check is Dune-eligible.
+- For analyst-routed items, provide useful checking instructions and likely official
   sources instead of leaving an unexplained failure.
 - Do not create entries simply to populate categories.
 - Do not add an Automation Opportunities section.

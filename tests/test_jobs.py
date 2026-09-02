@@ -95,6 +95,17 @@ class CollectionJobTests(unittest.TestCase):
 
         self.assertEqual(job.requests[0].chain, "arbitrum")
 
+    def test_rejects_unsupported_chain_before_rpc_collection(self):
+        document = valid_job()
+        document["requests"][0]["chain"] = "solana"
+        document["requests"][0]["target"]["chain"] = "Solana"
+        document["requests"][0]["target"].pop("chain_id", None)
+
+        with self.assertRaisesRegex(
+            ValueError, "Unsupported chain.*arbitrum.*base.*ethereum"
+        ):
+            CollectionJob.from_mapping(document)
+
 
 if __name__ == "__main__":
     unittest.main()

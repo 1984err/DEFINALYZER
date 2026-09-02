@@ -6,8 +6,6 @@
 > materiality and deduplication rules. Do not repeat mechanics owned by other
 > pages.
 
-# Facts
-
 ## Identity
 
 | Field | Value |

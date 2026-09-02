@@ -28,12 +28,37 @@ FENCE_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# Reject collection limitations, not negative assertions about protocol behavior.
+# This deliberately narrow guard complements (rather than replaces) the prompt.
+DOCUMENTATION_GAP_PATTERN = re.compile(
+    r"\b(?:is|are|was|were|remains?|has been|have been)\s+"
+    r"(?:not\s+(?:documented|disclosed|specified|collected|provided)|undocumented)\b"
+    r"|\b(?:documentation|source coverage|coverage)\s+(?:is|was|remains)\s+"
+    r"(?:missing|partial|incomplete)\b",
+    re.IGNORECASE,
+)
+
+CLAIM_SELECTION_RULES = (
+    "Select assertions about the entity's behavior, economics, or controls, "
+    "not the analyst's assessment of the documentation. Statements that "
+    "information is missing, not documented, or coverage is partial are "
+    "research gaps: leave them in the research notes, never promote them "
+    "to verification claims. Do not invent an assertion to replace a gap. "
+    "For conflicting statements, preserve both documented assertions and "
+    "their sources; request clarification without declaring a contradiction. "
+    "Organize ALL claims by subject (economics, governance, etc.), independently "
+    "of Automated/Assisted/Manual route. Manual Review is a route, not a "
+    "subject category or a shared two-claim quota. Unsupported scanner chains "
+    "still qualify for material claims with a Manual route. "
+)
+
 
 @dataclass(frozen=True)
 class VerificationPlanResult:
     page_path: Path
     job_path: Path | None
     report_path: Path
+    catalog_path: Path
     provider_calls: int
     reused_calls: int
     ready_requests: int
@@ -123,7 +148,9 @@ def generate_verification_plan(
             provider_calls += 1
         else:
             reused_calls += 1
-        candidates = [reduced]
+        candidates = [json.dumps(_validate_candidate_response(
+            reduced, maximum_candidates=10,
+        ))]
         final_prompt = _final_prompt(
             entity=workspace.name,
             template=template,
@@ -145,16 +172,18 @@ def generate_verification_plan(
             final_prompt,
             working_directory=workspace.project_root,
         )
-        page = _validate_page(response.text, workspace.name)
+        page = _validate_page(response.text, workspace.name, require_subject_categories=True)
         _write_ledger(final_ledger, final_digest, page)
         provider_calls += 1
     else:
         reused_calls += 1
+        page = _validate_page(page, workspace.name, require_subject_categories=True)
     page = _strip_verification_planning_preamble(
         _normalize_collector_request_aliases(
         _normalize_research_links(
             _repair_mojibake(page),
             entity=workspace.name,
+            entity_type=str(workspace.document["entity_type"]),
             research_pages=research_pages,
         ),
         job_name=f"{workspace.slug}-verification",
@@ -177,6 +206,12 @@ def generate_verification_plan(
     )
     _write_generated_page(page_path, page_with_frontmatter)
 
+    catalog_path = state_directory / "verification-catalog.json"
+    _write_json(
+        catalog_path,
+        _verification_catalog(page, entity=workspace.name),
+    )
+
     request_document = load_verification_requests(page_path)
     import_result = _import_or_empty(
         request_document,
@@ -196,6 +231,7 @@ def generate_verification_plan(
         page_path=page_path,
         job_path=job_path,
         report_path=report_path,
+        catalog_path=catalog_path,
         provider_calls=provider_calls,
         reused_calls=reused_calls,
         ready_requests=import_result.report["ready_count"],
@@ -205,12 +241,12 @@ def generate_verification_plan(
 
 def _manual_claim_count(page: str) -> int:
     return len(
-        re.findall(r"(?m)^\| Status \| Manual review \|$", page)
+        re.findall(r"(?mi)^\| Check route \| Manual \|$", page)
     )
 
 
 def _normalize_route_statuses(page: str) -> str:
-    """Make pending/manual status agree with each claim's check route."""
+    """Migrate legacy result labels without conflating route and status."""
     entry_pattern = re.compile(
         r"(?ms)(^### VR-[A-Z0-9-]+\s+[—-].*?\n)"
         r"(?P<body>.*?)(?=^### |^## |\Z)"
@@ -218,18 +254,14 @@ def _normalize_route_statuses(page: str) -> str:
 
     def normalize_entry(match: re.Match[str]) -> str:
         body = match.group("body")
-        route = re.search(r"(?m)^\| Check route \| (.*?) \|$", body)
         status = re.search(r"(?m)^\| Status \| (.*?) \|$", body)
-        if route is None or status is None:
+        if status is None:
             return match.group(0)
         current = status.group(1).strip()
-        if current.casefold() not in {"pending", "manual review"}:
-            return match.group(0)
-        expected = (
-            "Manual review"
-            if route.group(1).strip().casefold() == "manual"
-            else "Pending"
-        )
+        expected = {
+            "manual review": "Pending",
+            "supported": "Confirmed",
+        }.get(current.casefold(), current)
         body = (
             body[: status.start(1)]
             + expected
@@ -239,22 +271,125 @@ def _normalize_route_statuses(page: str) -> str:
 
     page = entry_pattern.sub(normalize_entry, page)
     statuses = re.findall(r"(?m)^\| Status \| (.*?) \|$", page)
-    for label in (
+    labels = (
         "Pending",
         "Evidence collected",
-        "Manual review",
-        "Supported",
+        "Confirmed",
         "Contradicted",
         "Inconclusive",
-    ):
-        count = sum(value.casefold() == label.casefold() for value in statuses)
-        page = re.sub(
-            rf"(?m)^\| {re.escape(label)} \| \d+ \|$",
-            f"| {label} | {count} |",
-            page,
-            count=1,
-        )
+        "Public evidence unavailable",
+    )
+    summary = "| Status | Count |\n|---|---:|\n" + "\n".join(
+        f"| {label} | "
+        f"{sum(value.casefold() == label.casefold() for value in statuses)} |"
+        for label in labels
+    )
+    page = re.sub(
+        r"(?ms)^## Summary\s*\n\n.*?(?=^##(?:#)? |\Z)",
+        "## Summary\n\n" + summary + "\n\n",
+        page,
+        count=1,
+    )
     return page
+
+
+def _verification_catalog(page: str, *, entity: str) -> dict[str, Any]:
+    """Return a structured index of every check, including legacy entries."""
+    entries: list[dict[str, Any]] = []
+    pattern = re.compile(
+        r"(?ms)^### (?P<id>VR-[A-Z0-9-]+)\s+[—-]\s+"
+        r"(?P<title>.*?)\n(?P<body>.*?)(?=^### |^## |\Z)"
+    )
+    for match in pattern.finditer(page):
+        headings = re.findall(r"(?m)^## ([^\r\n]+)$", page[: match.start()])
+        category = headings[-1] if headings else "Uncategorized"
+        fields = {
+            key.strip(): value.strip()
+            for key, value in re.findall(
+                r"(?m)^\| ([^|]+?) \| (.*?) \|$",
+                match.group("body"),
+            )
+            if key.strip() != "Field"
+        }
+        route = fields.get("Check route", "Manual")
+        entries.append(
+            {
+                "id": match.group("id"),
+                "title": match.group("title").strip(),
+                "category": category,
+                "claim": fields.get("Claim", ""),
+                "claim_type": fields.get(
+                    "Claim type", _legacy_claim_type(category)
+                ),
+                "evidence_availability": fields.get(
+                    "Evidence availability", "Unknown"
+                ),
+                "recommended_method": fields.get(
+                    "Recommended method",
+                    "Direct RPC"
+                    if route.casefold() == "automated"
+                    else "Analyst review",
+                ),
+                "dune_eligible": (
+                    fields.get("Recommended method", "").casefold()
+                    == "dune candidate"
+                    and fields.get("Evidence availability", "Unknown").casefold()
+                    == "public"
+                ),
+                "check_route": route,
+                "status": {
+                    "manual review": "Pending",
+                    "supported": "Confirmed",
+                }.get(
+                    fields.get("Status", "Pending").casefold(),
+                    fields.get("Status", "Pending"),
+                ),
+                "research_source": fields.get("Research source", ""),
+                "registry_target": fields.get("Registry target", ""),
+                "materiality": fields.get("Materiality", ""),
+                "how_to_check": fields.get("How to check", ""),
+                "likely_source": fields.get("Likely source", ""),
+                "evidence_required": fields.get("Evidence required", ""),
+            }
+        )
+    return {
+        "schema_version": 1,
+        "entity": entity,
+        "entries": entries,
+        "interpretation_performed": False,
+    }
+
+
+def write_verification_catalog(workspace: ProjectWorkspace) -> Path:
+    """Refresh the structured dashboard index from the canonical Markdown page."""
+    if not workspace.verification_page_path.exists():
+        raise FileNotFoundError(
+            f"Verification page does not exist: {workspace.verification_page_path}"
+        )
+    path = workspace.project_root / "verification-planning" / "verification-catalog.json"
+    _write_json(
+        path,
+        _verification_catalog(
+            workspace.verification_page_path.read_text(encoding="utf-8"),
+            entity=workspace.name,
+        ),
+    )
+    return path
+
+
+def _legacy_claim_type(category: str) -> str:
+    value = category.casefold()
+    if "governance" in value:
+        return "Governance"
+    if "upgrade" in value or "ownership" in value:
+        return "Smart contract/code"
+    if "competitive" in value:
+        return "Market/external data"
+    if "configuration" in value or "oracle" in value or "cross-chain" in value:
+        return "Smart contract/code"
+    if "token" in value or "fee" in value or "treasury" in value:
+        return "On-chain state/events"
+    return "Unknown"
 
 
 def _bundle_research_pages(paths: tuple[Path, ...]) -> tuple[str, ...]:
@@ -397,6 +532,7 @@ def _candidate_prompt(source_bundle: str) -> str:
         "judge claims. Exclude routine facts, component lists, addresses, and "
         "low-impact settings. A candidate may be manual when onchain evidence "
         "cannot answer it.\n\n"
+        + CLAIM_SELECTION_RULES + "\n\n"
         "Return strict JSON only:\n"
         '{"candidates":[{"claim":"","materiality":"","category":"",'
         '"research_note":"","claim_location":"","evidence_needed":""}]}\n\n'
@@ -412,10 +548,11 @@ def _candidate_reduction_prompt(candidates: list[str]) -> str:
         "Deduplicate the supplied candidate batches. Retain at most 10 claims "
         "whose accuracy is most likely to materially change an investment, "
         "security, governance, solvency, economic, or operational assessment. "
-        "Keep at most 2 claims per category. Preserve exact research_note "
+        "Keep at most 2 claims per subject category. Preserve exact research_note "
         "filenames and concise claim_location values. Do not evaluate claims "
         "or add facts. Return strict JSON only using the same candidates "
         "schema.\n\n"
+        + CLAIM_SELECTION_RULES + "\n\n"
         + "\n\n".join(candidates)
     )
 
@@ -485,7 +622,7 @@ def _final_prompt(
     return (
         "# Verification Plan Consolidation\n\n"
         f"Create the verification page for {entity}. Follow the template "
-        "exactly. Select at most 10 total claims and at most 2 per category. "
+        "exactly. Select at most 10 total claims and at most 2 per subject category. "
         "Deduplicate overlapping claims and retain only the claims most likely "
         "to change an investment decision. Use only exact addresses and "
         "provenance present in the registry. "
@@ -494,9 +631,16 @@ def _final_prompt(
         "partial evidence even when it cannot resolve a broader issue; narrow "
         "that automated claim to exactly what the request observes and keep "
         "unobservable governance, timelock, or behavioral conclusions as a "
-        "separate Manual Review entry. Never imply partial evidence is a "
-        "verdict. Route all other material claims to Manual Review and give "
+        "separate entry with a Manual check route. Never imply partial evidence is a "
+        "verdict. Route all other material claims to analyst review and give "
         "them a short actionable procedure plus likely official sources. "
+        "For every entry, independently classify Claim type, Evidence "
+        "availability, Recommended method, Check route, and Status. New "
+        "entries always use Pending status, including Manual routes. Never "
+        "label evidence unavailable merely because it was not documented. "
+        "Mark Dune candidate only for public indexed on-chain history or "
+        "aggregate queries, and include Optional Dune query = Available only "
+        "for those entries. Dune remains optional and is never executed here. "
         "Treat the page as an analyst checklist, not a promise that every "
         "claim can be automated. Use "
         "table-safe Obsidian aliases (`\\|`) inside tables. Return "
@@ -505,6 +649,7 @@ def _final_prompt(
         "empty. Research Note values are exact filenames; link only those note "
         "names and never turn claim text into a wiki link. Do not include "
         "verdicts or expected values.\n\n"
+        + CLAIM_SELECTION_RULES + "\n\n"
         "## TEMPLATE\n\n"
         f"{template.strip()}\n\n"
         "## REGISTRY\n\n"
@@ -545,16 +690,23 @@ def _validate_candidate_response(
         for field in required:
             if not isinstance(row.get(field), str) or not row[field].strip():
                 raise ValueError(f"Candidate field {field!r} must be non-empty.")
-    return {"candidates": rows}
+    return {"candidates": [
+        row for row in rows if not DOCUMENTATION_GAP_PATTERN.search(row["claim"])
+    ]}
 
 
-def _validate_page(text: str, entity: str) -> str:
+def _validate_page(text: str, entity: str, *, require_subject_categories: bool = False) -> str:
     value = _repair_mojibake(text.strip())
     if value.startswith("```markdown"):
         value = re.sub(r"^```markdown\s*", "", value)
         value = re.sub(r"\s*```$", "", value)
     if f"# {entity}" not in value or "Verification" not in value:
         raise ValueError("Verification page has the wrong entity heading.")
+    if require_subject_categories and re.search(r"(?mi)^## Manual Review\s*$", value):
+        raise ValueError(
+            "Group verification claims by subject; Manual belongs in Check route, "
+            "not in a shared Manual Review category."
+        )
     if value.count("```definalyzer-verification") != 1:
         raise ValueError(
             "Verification page must contain exactly one collector JSON block."
@@ -583,7 +735,20 @@ def _validate_page(text: str, entity: str) -> str:
     )
     for entry in entry_pattern.finditer(value):
         body = entry.group("body")
-        for field in ("Check route", "How to check", "Likely source"):
+        claim = re.search(r"^\| Claim \| (.*?) \|$", body, re.MULTILINE)
+        if claim and DOCUMENTATION_GAP_PATTERN.search(claim.group(1)):
+            raise ValueError(
+                "A documentation gap is not a verification claim; keep it "
+                "under Material Unknowns in the research notes."
+            )
+        for field in (
+            "Claim type",
+            "Evidence availability",
+            "Recommended method",
+            "Check route",
+            "How to check",
+            "Likely source",
+        ):
             if not re.search(
                 rf"^\| {re.escape(field)} \| .+ \|$",
                 body,
@@ -603,11 +768,100 @@ def _validate_page(text: str, entity: str) -> str:
             "manual",
         }:
             raise ValueError("Verification Check route is invalid.")
+        _validate_taxonomy_field(
+            body,
+            "Status",
+            {
+                "pending",
+                "evidence collected",
+                "confirmed",
+                "contradicted",
+                "inconclusive",
+                "public evidence unavailable",
+                # Accepted only for safe migration of cached legacy output.
+                "manual review",
+                "supported",
+            },
+        )
+        _validate_taxonomy_field(
+            body,
+            "Claim type",
+            {
+                "on-chain state/events",
+                "smart contract/code",
+                "governance",
+                "legal/regulatory",
+                "organizational/private",
+                "off-chain operational",
+                "market/external data",
+            },
+        )
+        method = re.search(
+            r"^\| Recommended method \| (?P<value>.*?) \|$",
+            body,
+            re.MULTILINE,
+        )
+        availability = re.search(
+            r"^\| Evidence availability \| (?P<value>.*?) \|$",
+            body,
+            re.MULTILINE,
+        )
+        dune_row = re.search(
+            r"^\| Optional Dune query \| (?P<value>.*?) \|$",
+            body,
+            re.MULTILINE,
+        )
+        is_dune = bool(
+            method and method.group("value").strip().casefold() == "dune candidate"
+        )
+        if is_dune and (
+            availability is None
+            or availability.group("value").strip().casefold() != "public"
+        ):
+            raise ValueError("Dune candidates must use public evidence.")
+        if is_dune and (
+            dune_row is None
+            or dune_row.group("value").strip().casefold() != "available"
+        ):
+            raise ValueError("Dune candidates must show the optional Dune query row.")
+        if not is_dune and dune_row is not None:
+            raise ValueError("Optional Dune query is only valid for Dune candidates.")
+        _validate_taxonomy_field(
+            body,
+            "Evidence availability",
+            {"public", "restricted/private", "not documented", "unknown"},
+        )
+        _validate_taxonomy_field(
+            body,
+            "Recommended method",
+            {
+                "direct rpc",
+                "dune candidate",
+                "official source",
+                "external database",
+                "analyst review",
+                "public evidence unavailable",
+            },
+        )
     return value
 
 
+def _validate_taxonomy_field(
+    body: str,
+    field: str,
+    allowed: set[str],
+) -> None:
+    match = re.search(
+        rf"^\| {re.escape(field)} \| (?P<value>.*?) \|$",
+        body,
+        re.MULTILINE,
+    )
+    if match is None or match.group("value").strip().casefold() not in allowed:
+        raise ValueError(f"Verification {field} is invalid.")
+
+
 def _sanitize_candidates(text: str, source_bundle: str) -> str:
-    document = _parse_json(text)
+    document = _validate_candidate_response(text)
     rows = document.get("candidates")
     if not isinstance(rows, list):
         raise ValueError("Candidate ledger is missing its candidates list.")
@@ -677,6 +931,7 @@ def _normalize_research_links(
     text: str,
     *,
     entity: str,
+    entity_type: str = "protocol",
     research_pages: tuple[Path, ...],
 ) -> str:
     aliases = {
@@ -685,6 +940,11 @@ def _normalize_research_links(
         for name in (path.name, path.stem)
     }
     output = []
+    entity_folder = {
+        "protocol": "Protocols",
+        "chain": "Chains",
+        "token": "Tokens",
+    }.get(entity_type, "Protocols")
     pattern = re.compile(r"\[\[(?P<target>[^|\]\\]+)(?:\\?\|[^\]]+)?\]\]")
     for line in text.splitlines():
         in_table = line.strip().startswith("|") and line.strip().endswith("|")
@@ -699,7 +959,7 @@ def _normalize_research_links(
             separator = "\\|" if in_table else "|"
             suffix = f"#{anchor}" if marker else ""
             return (
-                f"[[Protocols/{entity}/{stem}{suffix}{separator}{alias}]]"
+                f"[[{entity_folder}/{entity}/{stem}{suffix}{separator}{alias}]]"
             )
 
         output.append(pattern.sub(replace, line))

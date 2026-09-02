@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DEFINALYZER</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand"><div><strong>DEFINALYZER</strong><small>Research console</small></div></div>
+      <label class="search"><span>⌕</span><input id="project-search" placeholder="Find a project"></label>
+      <nav id="projects" aria-label="Projects"></nav>
+      <section class="workspace-tools">
+        <p class="workspace-heading">Workspace</p>
+        <button id="dashboard-guide" class="workspace-action">Dashboard Guide</button>
+        <button id="provider-settings" class="workspace-action">AI Provider</button>
+        <button id="refresh-navigation" class="workspace-action">Rebuild Index Pages</button>
+      </section>
+      <div class="rail-footer"><p><span class="health-dot"></span> Local workspace</p></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow" id="entity-type">RESEARCH PROJECT</p><h1 id="project-title">Select a project</h1></div>
+        <div class="top-actions"><button id="refresh">Refresh dashboard</button><button id="new-project" class="primary">+ New project</button></div>
+      </header>
+
+      <section id="welcome" class="welcome">
+        <img class="welcome-logo" src="/assets/definalyzer-logo.png" alt="DEFINALYZER — AI Assisted DeFi Research">
+        <div class="welcome-message">
+          <p class="eyebrow">RESEARCH CONTROL</p>
+          <h2>Your research stays readable, portable, and on this computer.</h2>
+          <p>Select a project or select New project to start using Definalyzer</p>
+        </div>
+      </section>
+
+      <section id="workspace" hidden>
+        <div class="content-grid">
+          <aside class="page-panel panel">
+            <div class="panel-heading project-controls-heading"><button id="tools-toggle">Project Controls</button></div>
+            <label class="search"><span>⌕</span><input id="page-search" placeholder="Filter pages"></label>
+            <nav id="pages" aria-label="Research pages"></nav>
+          </aside>
+          <article id="reader-panel" class="reader panel">
+            <div id="reader-empty" class="empty"><span>◫</span><h2>Choose a page</h2><p>Select a research page from the navigation.</p></div>
+            <div id="reader" hidden><div class="reader-heading"><div class="reader-title"><p class="eyebrow" id="page-path"></p><h2 id="page-title"></h2></div><div class="reader-actions"><button id="expand-reader" type="button" aria-pressed="false" aria-controls="reader-panel" title="Use the full dashboard width for reading">Expand page</button><button id="copy-markdown">Copy Markdown</button></div></div><div id="markdown"></div></div>
+          </article>
+          <aside class="activity panel">
+            <div class="panel-heading"><h2>Activity</h2><span id="job-count" class="badge">0</span></div>
+            <div id="jobs" class="jobs"><p class="muted">No dashboard jobs yet.</p></div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="tools-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">PROJECT CONTROLS</p><h2 id="tools-title">Tools</h2></div><button value="cancel" aria-label="Close">×</button></div><div id="tool-list" class="tool-list"></div></form></dialog>
+  <dialog id="form-dialog"><form id="dynamic-form"><div class="dialog-head"><div><p class="eyebrow" id="form-kicker">ACTION</p><h2 id="form-title"></h2></div><button type="button" id="form-close" aria-label="Close">×</button></div><div id="form-fields"></div><p id="form-error" class="error"></p><div class="dialog-actions"><button type="button" id="form-cancel">Cancel</button><button class="primary" type="submit" id="form-submit">Run</button></div></form></dialog>
+  <dialog id="guide-dialog" class="guide-dialog"><div class="dialog-head"><div><p class="eyebrow">WORKSPACE HELP</p><h2>Dashboard Guide</h2></div><button type="button" id="guide-close" aria-label="Close">×</button></div><div id="guide-content" class="guide-content"></div></dialog>
+  <div id="toast" role="status"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

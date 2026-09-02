@@ -27,7 +27,7 @@ CATEGORY_LABELS = {
     "governance_security": "Governance and security",
 }
 CRITICAL_CATEGORIES = {"technical", "tokenomics", "fees_revenue"}
-SOURCE_STATUSES = {"registered", "collected", "failed"}
+SOURCE_STATUSES = {"registered", "partial", "collected", "failed"}
 
 
 @dataclass(frozen=True)
@@ -86,6 +86,26 @@ def _sync_primary_corpus_categories(workspace: ProjectWorkspace) -> None:
     if not isinstance(rows, list):
         return
     sources = [OfficialSource(**row) for row in rows if isinstance(row, dict)]
+    migrated_sources = []
+    migrated = False
+    for source in sources:
+        if (
+            source.category == "governance_security"
+            and source.status == "collected"
+            and source.detail
+            == "Categorized page found under primary documentation root"
+        ):
+            source = OfficialSource(
+                source_id=source.source_id,
+                category=source.category,
+                url=source.url,
+                status="partial",
+                collected_at=source.collected_at,
+                detail=source.detail,
+            )
+            migrated = True
+        migrated_sources.append(source)
+    sources = migrated_sources
     primary = workspace.document.get("docs_url")
     if not isinstance(primary, str) or not primary.strip():
         return
@@ -110,7 +130,7 @@ def _sync_primary_corpus_categories(workspace: ProjectWorkspace) -> None:
         ),
     }
     existing = {(source.category, source.url.casefold()) for source in sources}
-    changed = False
+    changed = migrated
     for category, terms in keywords.items():
         key = (category, primary.strip().casefold())
         named_page = any(
@@ -130,6 +150,20 @@ def _sync_primary_corpus_categories(workspace: ProjectWorkspace) -> None:
             )
             for _, content in pages
         )
+        # Some chains document fees as "gas" or under opaque filenames.
+        # Require a topical heading plus economic mechanics, not a navigation
+        # link or incidental mention. Content matches only credit partial coverage.
+        if category == "fees_revenue":
+            content_page = any(
+                re.search(
+                    r"(?m)^#{1,6}\s+[^\n]*\b(?:gas|fees?|revenue)\b", content
+                )
+                and re.search(
+                    r"\b(?:burn\w*|rebates?|recipients?|distribution|distributed|charged)\b",
+                    content,
+                )
+                for _, content in pages
+            )
         if key in existing or not (named_page or content_page):
             continue
         sources.append(
@@ -137,11 +171,20 @@ def _sync_primary_corpus_categories(workspace: ProjectWorkspace) -> None:
                 source_id=_source_id(category, primary.strip()),
                 category=category,
                 url=primary.strip(),
-                status="collected",
+                status=(
+                    "partial"
+                    if category == "governance_security"
+                    or (category == "fees_revenue" and content_page and not named_page)
+                    else "collected"
+                ),
                 collected_at=datetime.now(timezone.utc).isoformat(
                     timespec="seconds"
                 ),
-                detail="Categorized page found under primary documentation root",
+                detail=(
+                    "Categorized page found under primary documentation root"
+                    if named_page or category == "tokenomics"
+                    else "Topic heading and economic mechanics found in collected documentation"
+                ),
             )
         )
         changed = True
@@ -175,8 +218,17 @@ def load_source_coverage(workspace: ProjectWorkspace) -> CoverageSummary:
                 source.category == category and source.status == "collected"
                 for source in sources
             )
+            else "partial"
+            if any(
+                source.category == category and source.status == "partial"
+                for source in sources
+            )
             else "registered"
-            if any(source.category == category for source in sources)
+            if any(
+                source.category == category
+                and source.status == "registered"
+                for source in sources
+            )
             else "missing"
         )
         for category in CATEGORIES
@@ -187,7 +239,9 @@ def load_source_coverage(workspace: ProjectWorkspace) -> CoverageSummary:
             if all(value == "collected" for value in categories.values())
             else "partial"
         )
-    elif any(value == "collected" for value in categories.values()):
+    elif any(
+        value in {"collected", "partial"} for value in categories.values()
+    ):
         status = "partial"
     else:
         status = "missing"
@@ -291,9 +345,11 @@ def coverage_markdown(workspace: ProjectWorkspace) -> str:
         for category in CATEGORIES
     )
     warning = (
-        "Missing coverage means the topic was not fully assessed and does not "
+        "Coverage tracks categorized sources, not factual completeness. "
+        "Collected does not mean verified or exhaustive; Missing does not "
+        "establish that the corpus contains no relevant facts and does not "
         "prove that a feature or asset does not exist. `Not documented` refers "
-        "only to the relevant collected sources."
+        "only to the evidence supplied for the specific field."
     )
     return (
         "## Source Coverage\n\n"

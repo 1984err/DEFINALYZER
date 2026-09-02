@@ -7,8 +7,6 @@
 > supply statistics, price, valuation, or market data. Current circulating,
 > total, and maximum supply belong only on the deterministic token index.
 
-# Facts
-
 ## Token Identity
 
 | Field | Value |

@@ -16,6 +16,12 @@ do not reproduce the documentation.
 - Preserve documented terminology and material numbers exactly.
 - Record conflicting claims separately.
 - Use **Not documented** only for a material field requested by the template.
+- A missing or partial source-coverage label is not evidence that facts are
+  absent. Use supplied facts even when their source category is incomplete.
+- Category-specific evidence cannot establish absence across the entire
+  collection. Keep gaps specific to the field and supplied section evidence;
+  refer topics owned by other pages to those pages, not to Material Unknowns.
+- A documentation gap is not a claim made by the researched entity.
 - Use **Unable to determine** when supplied sources are ambiguous or conflict.
 - Use **Not applicable** only when the subject clearly does not apply.
 

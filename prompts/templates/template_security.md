@@ -5,8 +5,6 @@
 > Extract documented controls and security-critical trust. Do not conduct an
 > audit, invent attack paths, or repeat governance procedure.
 
-# Facts
-
 ## Security Model
 
 | Field | Value |

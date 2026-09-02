@@ -5,8 +5,6 @@
 > Extract only components and interactions required to understand protocol
 > behavior, asset control, trust boundaries, and critical failure paths.
 
-# Facts
-
 ## System Model
 
 | Field | Value |

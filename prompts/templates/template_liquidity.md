@@ -6,8 +6,6 @@
 > solvency, pricing, incentives, and user exposure. Do not list every supported
 > asset unless its treatment differs materially.
 
-# Facts
-
 ## Liquidity Model
 
 | Field | Value |

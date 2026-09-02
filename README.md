@@ -1,8 +1,76 @@
 # DEFINALYZER
 
+[MIT licensed](LICENSE)
+
 DEFINALYZER creates concise, fact-first DeFi research notes and can collect raw
 EVM evidence for selected material claims. Research remains useful when
 verification is skipped or unavailable.
+
+Start here:
+
+- [Windows setup and troubleshooting](docs/WINDOWS_SETUP.md)
+- [Beta scope and limitations](docs/LIMITATIONS.md)
+- [Security and data handling](SECURITY.md)
+- [Application architecture](docs/APPLICATION_ARCHITECTURE.md)
+- [Local dashboard](docs/DASHBOARD.md)
+- [Manual prompt workflow](prompts/README.md)
+- [Blockchain collector reference](blockchain_collector/USAGE.md)
+- [Compact fictional research output](examples/research_output/README.md)
+
+## Five-minute Quick Start
+
+Open PowerShell in the DEFINALYZER folder and run:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+crawl4ai-setup
+python main.py
+```
+
+`crawl4ai-setup` installs browser runtimes and may download several hundred
+megabytes on the first installation. This is normal. It is needed for website
+crawling, but not for the standalone blockchain collector or project manager.
+
+In the menu:
+
+1. Choose **Set up a new project (setup only)** and enter the official
+   documentation URL.
+2. Accept the offer to continue, or choose **Analyze a project (complete
+   research workflow)** afterward.
+3. Open the displayed `output/vault/` directory as an Obsidian vault.
+
+For the local dashboard instead of the terminal menu, run:
+
+```powershell
+python main.py dashboard
+```
+
+On Windows, you can also double-click `Start DEFINALYZER Dashboard.bat` in the
+project folder. It uses the project's virtual environment and opens the local
+dashboard without requiring a terminal command.
+
+To permanently remove an incorrect or unwanted run, choose **Delete a project
+and its generated data**. Type the exact project name to confirm. DEFINALYZER
+removes that project's sources, state, registry, research, verification, and
+analyst-review folders, removes token pages that no remaining project uses,
+and refreshes the vault indexes.
+
+Hermes is optional for crawling but required for automated research-page
+generation. Install and authenticate Hermes separately, then verify it with:
+
+```powershell
+python main.py provider test
+```
+
+RPC endpoints are optional unless you use blockchain evidence collection.
+Copy `.env.example` to `.env` and add only the endpoints you intend to use.
+
+The research workflow supports protocol, chain, and token projects. Automated
+blockchain evidence is currently limited to Ethereum, Arbitrum One, and Base;
+other networks still receive research and explicit manual verification tasks.
 
 ## Current status
 
@@ -17,6 +85,7 @@ verification is skipped or unavailable.
 - Deterministic keyless CoinGecko supply enrichment: available
 - Section-scoped, read-only AI explanations: available
 - Human-approved evidence evaluation and Obsidian link insertion: available
+- Local project dashboard and Markdown reader: available
 
 ## Install
 
@@ -46,6 +115,11 @@ python main.py provider configure
 python main.py provider test
 ```
 
+Windows Command Prompt uses `.venv\Scripts\activate.bat`; `source` is not a
+Windows activation command. Activation can also be skipped by calling
+`.\.venv\Scripts\python.exe` directly. See the
+[Windows guide](docs/WINDOWS_SETUP.md) for recovery instructions.
+
 ## Guided use
 
 Run the application without a command:
@@ -54,14 +128,25 @@ Run the application without a command:
 python main.py
 ```
 
-The menu supports project creation, complete-workflow status, separate
-workflow stages, crawling, blockchain collection, manual token records,
-vault indexes, and project status.
+For a new project, choose **Set up a new project (setup only)**. The menu then
+offers to continue directly into **Analyze a project (complete research
+workflow)**. After research and verification planning, it can optionally
+continue through scanner-ready evidence collection, evidence-assessment
+proposals. Human approval is deliberately separate under **Review and approve
+assessments**. Every boundary requires confirmation; stopping returns the
+remaining work to its numbered menu option. The collector warning
+lists its supported chains dynamically (currently Ethereum, Arbitrum, and
+Base). Unsupported networks and off-chain claims remain categorized manual
+tasks rather than failed or disproven claims.
 
-**Run complete workflow** now executes the usable research pipeline:
+The menu supports project creation, project-analysis status, separate
+workflow stages, crawling, blockchain collection, manual token records,
+vault indexes, project deletion, and project status.
+
+**Analyze a project** executes the usable research pipeline:
 documentation collection, all missing research pages, registry generation,
-deterministic CoinGecko supply enrichment, source-coverage reporting, and—when
-the project was created with verification requested—the categorized
+deterministic CoinGecko supply enrichment, source-coverage reporting, and--when
+the project was created with verification requested--the categorized
 verification checklist. Existing sources, pages, and resumable extraction
 ledgers are reused by default.
 
@@ -69,7 +154,7 @@ ledgers are reused by default.
 
 ```powershell
 python main.py init "Example Protocol" --docs-url https://docs.example.org
-python main.py all example-protocol
+python main.py analyze example-protocol
 python main.py crawl example-protocol
 python main.py source add example-protocol --category tokenomics --url https://example.org/token
 python main.py source crawl example-protocol --category tokenomics
@@ -77,25 +162,33 @@ python main.py source list example-protocol
 python main.py extract example-protocol --template protocol-overview
 python main.py registry example-protocol
 python main.py market-data example-protocol
+python main.py ask example-protocol --question "How does the protocol make money?"
+python main.py ask example-protocol --question "How do liquidations work?" --deep
 python main.py ask example-protocol --page Governance --heading "Material Permissions" --question "What can this role do?"
 python main.py verification-plan example-protocol
+python main.py dune example-protocol VR-FEE-001
+python main.py dune example-protocol VR-FEE-001 --feedback-type error --feedback "Paste the exact Dune error"
 python main.py evaluate example-protocol
 python main.py review example-protocol
 python main.py status example-protocol
-python main.py collect example-protocol
+python main.py collect example-protocol --planned
+python main.py collect example-protocol  # standalone advanced collector
+python main.py dashboard
 ```
 
-Rerun `python main.py all <project>` after an interruption to resume from
+Rerun `python main.py analyze <project>` after an interruption to resume from
 existing outputs. Use `--refresh` only when you intentionally want to recrawl
 the primary documentation and replace every generated research page:
 
 ```powershell
-python main.py all example-protocol --refresh
+python main.py analyze example-protocol --refresh
 ```
+
+The older `all` command remains an alias for `analyze`.
 
 Verification remains optional. Projects created with verification status
 `not_requested` or `unsupported` finish with analysis-ready research and an
-explicit “verification skipped” message. Projects configured as `pending`
+explicit "verification skipped" message. Projects configured as `pending`
 continue through verification planning; manual-review checks are a successful
 workflow result, not a pipeline failure.
 
@@ -138,6 +231,14 @@ not. Evidence collection records raw facts and does not itself confirm or deny
 claims. Research extraction, new verification-plan generation, evidence
 interpretation proposals, and scoped Q&A require the configured AI provider.
 
+The terminal and local dashboard share the typed application boundary in
+`definalyzer/application.py`. It exposes JSON-safe project snapshots, truthful
+action availability, project lifecycle operations, Q&A, Dune dialogue, market
+data, and local paths without duplicating research logic. See the
+[application architecture](docs/APPLICATION_ARCHITECTURE.md).
+
+## Advanced behavior
+
 Extraction mode defaults to `auto`: a small source set uses one provider call;
 a larger set is split into resumable fact-ledger batches and consolidated.
 Power users may force a mode with `--mode single` or `--mode chunked`.
@@ -146,7 +247,19 @@ For large projects, the first extraction creates a categorized shared research
 corpus under `output/projects/<project>/extraction/shared-research/`. Later
 research templates reuse that corpus instead of rescanning every source page.
 Fenced implementation examples are excluded from AI input but remain intact in
-the locally saved source Markdown.
+the locally saved source Markdown. Endpoint-by-endpoint catalogs such as FIX
+message references, RPC method catalogs, and subscription-channel references
+are also retained locally but excluded from routine investment extraction.
+Conceptual architecture, risk, security, integration, and changelog pages stay
+in the AI corpus. Each extraction reports selected and excluded source volume,
+provider calls, reused calls, and approximate provider-input characters; the
+same history is saved under
+`output/projects/<project>/extraction/usage.json`.
+
+When no protocol-native token or tokenomics source is identified, the
+Tokenomics page is a compact coverage notice generated without an AI call. It
+does not claim that no token exists and directs the analyst to add an official
+source if token economics are material.
 
 Documentation discovery is layered. It first uses the conventional `/docs/`
 filter and, when that finds nothing, retries across the configured
@@ -187,10 +300,10 @@ without calling AI:
 python main.py extract example-protocol --template protocol-overview --plan
 ```
 
-Only one complete workflow may run for a project at a time. A second launch is
+Only one project analysis may run for a project at a time. A second launch is
 rejected instead of writing concurrently or duplicating provider calls. A
 project whose crawl is `partial`, `blocked`, or still incomplete is recrawled;
-the complete workflow will not treat a few surviving source files as a valid
+project analysis will not treat a few surviving source files as a valid
 corpus for AI extraction.
 
 The existing tools remain independently available:
@@ -208,19 +321,19 @@ The application creates:
 
 ```text
 output/
-├── projects/<project>/
-│   ├── project.json
-│   ├── jobs/
-│   └── evidence/
-├── sources/<project>/
-├── registries/<project>/
-└── vault/
-    ├── Protocols/
-    ├── Chains/
-    ├── Tokens/
-    ├── Verification/
-    ├── Analyst Reviews/
-    └── Indexes/
+|-- projects/<project>/
+|   |-- project.json
+|   |-- jobs/
+|   `-- evidence/
+|-- sources/<project>/
+|-- registries/<project>/
+`-- vault/
+    |-- Protocols/
+    |-- Chains/
+    |-- Tokens/
+    |-- Verification/
+    |-- Analyst Reviews/
+    `-- Indexes/
 ```
 
 Open `output/vault/` directly in Obsidian or synchronize that directory.
@@ -228,7 +341,10 @@ Generated output is ignored by Git.
 
 `Indexes/Home.md`, `Research.md`, `Tokens.md`, and `Verification.md` are
 generated vault-wide navigation pages. Choose **Refresh Obsidian vault
-indexes** after adding or changing projects; this uses no AI. Each verification page is stored at
+indexes** after adding or changing projects; this uses no AI. The Research
+index reports effective readiness and the next valid action rather than merely
+repeating saved stage labels. Token parent links follow the project's actual
+Protocol, Chain, or Token folder. Each verification page is stored at
 `Verification/<project>/Index.md`, leaving its project folder available for
 related analyst evidence. Saved **Analyst Reviews** are optional,
 non-canonical scratch notes; no extraction, registry, verification, or index
@@ -268,15 +384,24 @@ supply statistics. The token index is the concise identity-and-statistics page;
 its current supply fields and FDV come only from deterministic CoinGecko
 enrichment, never from AI.
 
-For help interpreting a research entry, choose **Explain a research-page
-entry** from the main menu. Select one project page and one Markdown heading,
-then ask a focused question. Hermes receives only that complete section, its
-page identity, and the question. It is instructed to distinguish facts,
-inference, and unknown information and to avoid outside knowledge or investment
-recommendations. Oversized sections are rejected rather than silently
-truncated. The answer is read-only unless the user explicitly saves it under
+For help interpreting the research, choose **Ask a question about project
+research** from the main menu. By default, DEFINALYZER searches every generated
+research page, the verification checklist, and related native/protocol token
+pages locally, then sends only the strongest matching passages to Hermes. Deep
+search also searches all collected source Markdown without sending the entire
+documentation corpus. Page-and-heading restriction remains optional for a
+question that intentionally concerns one entry. Hermes distinguishes documented
+facts, inference, and unknown information and cites the retrieved passages; it
+does not use outside knowledge or provide investment recommendations. The
+answer is read-only unless the user explicitly saves it under
 `output/vault/Analyst Reviews/<project>/`; saved answers are labeled
-non-canonical AI explanations and link back to the selected source section.
+non-canonical AI explanations and link to every consulted vault source.
+
+Retrieval itself is deterministic and uses no AI. Both normal and deep search
+package at most roughly 20,000 characters of source context so large projects do
+not turn every question into a full-document model call. Deep mode costs more
+local search time, not necessarily more model tokens, and is useful when the
+streamlined research notes may have omitted the detail behind a question.
 
 Extraction detail is decision-aware rather than capped by row count. Core
 mechanisms retain their material flows, controls, dependencies, and failure
@@ -291,15 +416,31 @@ may enrich them. Only non-conflicting targets with a resolved supported chain
 are eligible for automatic collector requests. Unresolved or conflicting
 records remain visible for manual review instead of being guessed.
 
+Each generated registry JSON also records the selected local source path, its
+official source URL when present, and a SHA-256 hash of the exact saved input.
+Address and token source cells link back to the official web or commit-pinned
+GitHub page. These provenance records are deterministic metadata and do not
+make the concise research pages longer.
+
 Verification planning inserts compact Obsidian links at exact mapped research
 sections. The verification page is an analyst checklist: each material item
 states whether its route is automated, assisted, or manual, how to perform the
-check, and the likely official source. Manual review is an expected work-queue
-item rather than a failed automation result. For a manual evidence check,
+check, and the likely official source. Claim type, evidence availability,
+recommended method, work route, and result status are stored separately.
+Manual review is an expected work route rather than a failed automation result
+or a verdict about the claim. For a manual evidence check,
 choose **Collect blockchain evidence**
 from the main menu and then **Select a project registry target**. The collector
 fills the documented address, chain, role, and provenance before asking which
 supported read to run.
+
+Checks conservatively classified as public `Dune candidate` entries show an
+optional Dune-query action. DEFINALYZER asks Hermes for one read-only query and
+saves the draft under the matching verification folder. The user runs it in
+Dune and may paste an exact error, additional context, or a result summary/link
+back into the dialogue for a revised query. Every version is retained. No Dune
+API key is used, no query is executed by DEFINALYZER, and neither a query nor a
+pasted result changes verification status automatically.
 
 Evidence evaluation is a separate human-approved stage. `evaluate` creates
 immutable Hermes proposals without changing claim status. `review` displays
@@ -323,3 +464,28 @@ used:
 
 See `prompts/README.md` for fact extraction, normalized registry generation,
 categorized verification pages, and scanner request generation.
+
+## Release checks
+
+Run these from the activated project environment before publishing a change:
+
+```powershell
+python -m pip check
+python -m unittest discover -s tests
+python -m blockchain_collector.capabilities
+python main.py --help
+```
+
+For dashboard changes, also run the optional Node.js UI-state tests:
+
+```text
+node --test tests/dashboard_reader.test.cjs
+```
+
+No RPC or AI call is made by those checks. A beta release also requires a live
+Hermes provider test and, when scanner behavior changed, a read-only RPC smoke
+test using a disposable evidence output path.
+
+## License
+
+DEFINALYZER is available under the [MIT License](LICENSE).

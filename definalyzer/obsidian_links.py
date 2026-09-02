@@ -24,6 +24,7 @@ class _Mapping:
     note_stem: str
     location: str
     block_id: str
+    claim: str = ""
 
 
 def insert_verification_links(
@@ -57,7 +58,12 @@ def insert_verification_links(
         headings = _headings(lines)
         links_by_line: dict[int, set[tuple[str, str]]] = {}
         for mapping in note_mappings:
-            heading_line = _match_heading(mapping.location, headings)
+            heading_line = _match_location(
+                mapping.location,
+                headings,
+                lines,
+                claim=mapping.claim,
+            )
             if heading_line is None:
                 unresolved.append(
                     f"{mapping.verification_id}: "
@@ -70,7 +76,7 @@ def insert_verification_links(
 
         if not links_by_line:
             if clean != original:
-                path.write_text(clean, encoding="utf-8", newline="\n")
+                _write_text_atomic(path, clean)
                 changed.append(path)
             continue
 
@@ -95,7 +101,20 @@ def insert_verification_links(
             inserted += len(rows)
         updated = _normalize_markdown_spacing("\n".join(output)).rstrip() + "\n"
         if updated != original:
-            path.write_text(updated, encoding="utf-8", newline="\n")
+            _write_text_atomic(path, updated)
+            changed.append(path)
+
+    # A removed claim can leave its old page absent from the new link map.
+    # Clear generated links on those pages as well, keeping the research intact.
+    for path in sorted(research_directory.glob("*.md")):
+        if path.stem.casefold() in by_note:
+            continue
+        original = path.read_text(encoding="utf-8")
+        if f"[[{verification_target}#^" not in original:
+            continue
+        clean = strip_generated_verification_links(original)
+        if clean != original:
+            _write_text_atomic(path, clean)
             changed.append(path)
 
     return LinkInsertionResult(
@@ -118,6 +137,7 @@ def _parse_link_map(text: str) -> tuple[_Mapping, ...]:
     if marker not in text:
         raise ValueError("Verification page is missing its Research Link Map.")
     section = text.split(marker, 1)[1].split("\n## ", 1)[0]
+    claims = _claims_by_id(text)
     mappings = []
     for line in section.splitlines():
         if not line.strip().startswith("|"):
@@ -129,7 +149,8 @@ def _parse_link_map(text: str) -> tuple[_Mapping, ...]:
         if len(cells) != 4 or not cells[0].startswith("VR-"):
             continue
         note_match = re.search(
-            r"\[\[(?:Protocols/[^/]+/)?(?P<note>[^#|\\\]]+)",
+            r"\[\[(?:(?:Protocols|Chains|Tokens)/[^/]+/)?"
+            r"(?P<note>[^#|\\\]]+)",
             cells[1],
         )
         block_match = re.search(r"#\^(?P<block>[a-z0-9-]+)", cells[3])
@@ -141,11 +162,34 @@ def _parse_link_map(text: str) -> tuple[_Mapping, ...]:
                 note_stem=Path(note_match.group("note")).stem,
                 location=cells[2],
                 block_id=block_match.group("block"),
+                claim=claims.get(cells[0], ""),
             )
         )
     if not mappings:
-        raise ValueError("Verification Research Link Map has no usable rows.")
+        empty_plan = (
+            "| Verification ID | Research Note | Claim Location | Obsidian Link |" in section
+            and not re.search(r"(?m)^###\s+VR-|^\|\s*VR-", text)
+        )
+        if not empty_plan:
+            raise ValueError("Verification Research Link Map has no usable rows.")
     return tuple(mappings)
+
+
+def _claims_by_id(text: str) -> dict[str, str]:
+    claims: dict[str, str] = {}
+    sections = re.finditer(
+        r"(?ms)^###\s+(?P<id>VR-[A-Z0-9-]+)\b.*?"
+        r"(?=^###\s+VR-|^##\s+|\Z)",
+        text,
+    )
+    for section in sections:
+        claim = re.search(
+            r"(?m)^\|\s*Claim\s*\|\s*(?P<claim>.*?)\s*\|\s*$",
+            section.group(0),
+        )
+        if claim:
+            claims[section.group("id")] = claim.group("claim")
+    return claims
 
 
 def _find_note(directory: Path, note_key: str) -> Path | None:
@@ -189,6 +233,91 @@ def _match_heading(
     return None
 
 
+def _match_location(
+    location: str,
+    headings: tuple[tuple[int, str], ...],
+    lines: list[str],
+    *,
+    claim: str = "",
+) -> int | None:
+    """Resolve an exact heading or an exact unique phrase under a heading."""
+
+    heading_line = _match_heading(location, headings)
+    if heading_line is not None:
+        return heading_line
+
+    candidates = [
+        _normalize(value)
+        for value in re.split(r"\s*;\s*", location)
+        if value.strip()
+    ]
+    for candidate in candidates:
+        matches = [
+            index
+            for index, line in enumerate(lines)
+            if candidate and candidate in _normalize(line)
+        ]
+        if len(matches) != 1:
+            continue
+        preceding = [
+            line_number
+            for line_number, _ in headings
+            if line_number < matches[0]
+        ]
+        if preceding:
+            return preceding[-1]
+    return _match_section_content(
+        location=location,
+        claim=claim,
+        headings=headings,
+        lines=lines,
+    )
+
+
+def _match_section_content(
+    *,
+    location: str,
+    claim: str,
+    headings: tuple[tuple[int, str], ...],
+    lines: list[str],
+) -> int | None:
+    """Map a planner paraphrase only when one section is a clear token match."""
+
+    query = _meaningful_tokens(f"{location} {claim}")
+    if len(query) < 2:
+        return None
+    scored: list[tuple[int, int]] = []
+    for index, (line_number, heading_title) in enumerate(headings):
+        end = headings[index + 1][0] if index + 1 < len(headings) else len(lines)
+        section = _meaningful_tokens(" ".join(lines[line_number:end]))
+        heading_overlap = len(query & _meaningful_tokens(heading_title))
+        scored.append((len(query & section) + heading_overlap, line_number))
+    scored.sort(reverse=True)
+    if not scored:
+        return None
+    best_score, best_line = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0
+    minimum = max(2, (len(query) + 3) // 4)
+    if best_score < minimum or best_score == second_score:
+        return None
+    return best_line
+
+
+def _meaningful_tokens(value: str) -> set[str]:
+    stopwords = {
+        "a", "all", "an", "and", "are", "as", "at", "be", "by",
+        "does", "for", "from", "in", "is", "it", "not", "of", "on",
+        "or", "that", "the", "their", "this", "to", "with",
+    }
+    tokens = set()
+    for token in re.findall(r"[a-z0-9]+", value.casefold()):
+        if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+            token = token[:-1]
+        if token not in stopwords:
+            tokens.add(token)
+    return tokens
+
+
 def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().casefold()
 
@@ -220,18 +349,16 @@ def strip_generated_verification_links(text: str) -> str:
         re.DOTALL,
     )
     cleaned = legacy_pattern.sub("\n", text)
-    # Match the entire generated line regardless of whether it contains one
-    # link or several links separated by a Unicode middle dot.
-    cleaned = re.sub(
-        r"(?m)^[ \t]*Verification:[ \t]+"
-        r"\[\[Verification/[^\r\n]+$\r?\n?",
-        "",
-        cleaned,
-    )
-    return re.sub(r"\n{3,}", "\n\n", cleaned)
     generated_line = re.compile(
         r"(?m)^\s*Verification:\s+"
         r"\[\[Verification/[^\r\n]+\]\]"
         r"(?:\s+·\s+\[\[Verification/[^\r\n]+\]\])*\s*$\r?\n?"
     )
-    return generated_line.sub("", cleaned)
+    cleaned = generated_line.sub("", cleaned)
+    return re.sub(r"\n{3,}", "\n\n", cleaned)
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(text, encoding="utf-8", newline="\n")
+    temporary.replace(path)

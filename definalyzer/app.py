@@ -6,21 +6,40 @@ import argparse
 import asyncio
 import json
 import os
+import re
 from contextlib import contextmanager
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Sequence
+from urllib.parse import urlparse
 
 from blockchain_collector.envfile import load_environment_file
+from blockchain_collector.evidence import write_evidence_bundle
+from blockchain_collector.executor import execute_collection_job
+from blockchain_collector.jobs import load_collection_job
 from blockchain_collector.menu import run_guided_menu as run_collector_menu
+from blockchain_collector.rpc import SUPPORTED_CHAINS
+from blockchain_collector.summary import write_evidence_summary
 
 from .analyst_review import (
     ReviewSection,
     list_review_pages,
     parse_review_sections,
-    run_analyst_review,
-    save_analyst_review,
     select_review_page,
     select_review_section,
+)
+from .application import DefinalyzerApplication
+from .dependencies import (
+    bootstrap_legacy_research,
+    json_fingerprint,
+    record_research_page,
+    research_pages_current,
+    source_corpus_fingerprint,
+    stale_research_pages,
+)
+from .dune_assistant import (
+    restore_dune_dialogue_links,
 )
 from .extraction import (
     OUTPUT_FILES,
@@ -57,6 +76,15 @@ from .source_coverage import (
     write_coverage_source,
 )
 from .verification_planning import generate_verification_plan
+from .verification_state import (
+    JOB_FINGERPRINT_KEY,
+    evidence_job_fingerprint,
+    verification_job_fingerprint,
+)
+from .workflow_status import (
+    verification_status_label,
+    workflow_status_document,
+)
 from .workspace import ProjectWorkspace, WorkspaceManager
 
 
@@ -113,9 +141,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     collect = subparsers.add_parser(
         "collect",
-        help="Open the guided blockchain evidence collector for a project.",
+        help="Open the standalone advanced blockchain evidence collector.",
     )
     collect.add_argument("project")
+    collect.add_argument(
+        "--planned",
+        action="store_true",
+        help="Run this project's scanner-ready verification checklist.",
+    )
 
     provider = subparsers.add_parser(
         "provider",
@@ -176,16 +209,43 @@ def build_parser() -> argparse.ArgumentParser:
 
     ask = subparsers.add_parser(
         "ask",
-        help="Ask Hermes about one selected research-page section.",
+        help="Ask Hermes a question across project research.",
     )
     ask.add_argument("project")
-    ask.add_argument("--page", required=True, help="Markdown page name or stem.")
-    ask.add_argument("--heading", required=True, help="Exact Markdown heading.")
+    ask.add_argument(
+        "--page",
+        help="Optional Markdown page name or stem; use with --heading.",
+    )
+    ask.add_argument(
+        "--heading",
+        help="Optional exact heading used with --page to restrict the search.",
+    )
     ask.add_argument("--question", required=True)
+    ask.add_argument(
+        "--deep",
+        action="store_true",
+        help="Also search locally collected raw documentation.",
+    )
     ask.add_argument(
         "--save",
         action="store_true",
         help="Save the non-canonical answer under Analyst Reviews.",
+    )
+
+    dune = subparsers.add_parser(
+        "dune",
+        help="Draft or revise an optional Dune query for one eligible check.",
+    )
+    dune.add_argument("project")
+    dune.add_argument("verification_id")
+    dune.add_argument(
+        "--feedback-type",
+        choices=("error", "result", "context"),
+        help="Continue an existing dialogue with pasted Dune feedback.",
+    )
+    dune.add_argument(
+        "--feedback",
+        help="Exact Dune error, result summary/link, or additional context.",
     )
 
     source = subparsers.add_parser(
@@ -216,14 +276,31 @@ def build_parser() -> argparse.ArgumentParser:
     verification_plan.add_argument("project")
 
     complete = subparsers.add_parser(
-        "all",
-        help="Run or resume the complete research workflow.",
+        "analyze",
+        aliases=("all",),
+        help="Run or resume the complete project analysis (`all` also works).",
     )
     complete.add_argument("project")
     complete.add_argument(
         "--refresh",
         action="store_true",
         help="Refresh sources and replace all generated research pages.",
+    )
+
+    dashboard = subparsers.add_parser(
+        "dashboard",
+        help="Open the local browser dashboard.",
+    )
+    dashboard.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Loopback port (default: select an available port).",
+    )
+    dashboard.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Print the local URL without opening the default browser.",
     )
 
     return parser
@@ -237,12 +314,22 @@ def main(
 ) -> int:
     args = build_parser().parse_args(argv)
     manager = WorkspaceManager(args.workspace)
+    application = DefinalyzerApplication(manager)
 
     try:
         if args.command is None:
             return run_menu(manager, input_fn=input_fn, print_fn=print_fn)
+        if args.command == "dashboard":
+            from .dashboard import run_dashboard
+
+            return run_dashboard(
+                manager,
+                port=args.port,
+                open_browser=not args.no_open,
+                print_fn=print_fn,
+            )
         if args.command == "init":
-            workspace = manager.create_project(
+            workspace = application.create_project(
                 name=args.name,
                 entity_type=args.type,
                 docs_url=args.docs_url,
@@ -251,7 +338,7 @@ def main(
             _print_created(workspace, print_fn)
             return 0
         if args.command == "crawl":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
             docs_url = args.docs_url or workspace.document.get("docs_url")
 
             if not docs_url:
@@ -271,7 +358,27 @@ def main(
         if args.command == "status":
             return _show_status(manager, args.project, print_fn)
         if args.command == "collect":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
+            if args.planned:
+                if not _workflow_prerequisites_ready(
+                    workspace,
+                    step="evidence_collection",
+                    print_fn=print_fn,
+                ):
+                    return 2
+                return (
+                    0
+                    if _collect_planned_verification(
+                        manager,
+                        workspace,
+                        job_path=(
+                            workspace.jobs_directory
+                            / "verification-plan.json"
+                        ),
+                        print_fn=print_fn,
+                    )
+                    else 2
+                )
             return _collect(
                 manager,
                 workspace,
@@ -287,7 +394,13 @@ def main(
                 print_fn=print_fn,
             )
         if args.command == "extract":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
+            if not _workflow_prerequisites_ready(
+                workspace,
+                step="research_page",
+                print_fn=print_fn,
+            ):
+                return 2
             return _extract(
                 manager,
                 workspace,
@@ -298,30 +411,57 @@ def main(
                 print_fn=print_fn,
             )
         if args.command == "registry":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
+            if not _workflow_prerequisites_ready(
+                workspace,
+                step="registry",
+                print_fn=print_fn,
+            ):
+                return 2
             return _registry(manager, workspace, print_fn)
         if args.command == "market-data":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
             return _market_data(
                 workspace,
                 force=args.refresh,
                 print_fn=print_fn,
             )
         if args.command == "ask":
-            workspace = manager.load_project(args.project)
-            page = select_review_page(workspace, args.page)
-            section = select_review_section(page, args.heading)
+            workspace = application.load_project(args.project)
+            if bool(args.page) != bool(args.heading):
+                raise ValueError("--page and --heading must be supplied together.")
+            page = select_review_page(workspace, args.page) if args.page else None
+            section = (
+                select_review_section(page, args.heading)
+                if page is not None
+                else None
+            )
             return _analyst_review(
                 manager,
                 workspace,
                 page=page,
                 section=section,
                 question=args.question,
+                deep=args.deep,
                 save=args.save,
                 print_fn=print_fn,
             )
+        if args.command == "dune":
+            workspace = application.load_project(args.project)
+            if bool(args.feedback_type) != bool(args.feedback):
+                raise ValueError(
+                    "--feedback-type and --feedback must be supplied together."
+                )
+            return _dune_assistant(
+                manager,
+                workspace,
+                verification_id=args.verification_id,
+                feedback_type=args.feedback_type,
+                feedback=args.feedback,
+                print_fn=print_fn,
+            )
         if args.command == "source":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
             return _source_command(
                 manager,
                 workspace,
@@ -332,21 +472,39 @@ def main(
                 print_fn=print_fn,
             )
         if args.command == "verification-plan":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
+            if not _workflow_prerequisites_ready(
+                workspace,
+                step="verification_plan",
+                print_fn=print_fn,
+            ):
+                return 2
             return _verification_plan(manager, workspace, print_fn)
         if args.command == "evaluate":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
+            if not _workflow_prerequisites_ready(
+                workspace,
+                step="evidence_evaluation",
+                print_fn=print_fn,
+            ):
+                return 2
             return _evaluate(manager, workspace, print_fn)
         if args.command == "review":
-            workspace = manager.load_project(args.project)
+            workspace = application.load_project(args.project)
+            if not _workflow_prerequisites_ready(
+                workspace,
+                step="review",
+                print_fn=print_fn,
+            ):
+                return 2
             return _review(
                 manager,
                 workspace,
                 input_fn=input_fn,
                 print_fn=print_fn,
             )
-        if args.command == "all":
-            workspace = manager.load_project(args.project)
+        if args.command in {"analyze", "all"}:
+            workspace = application.load_project(args.project)
             return _complete_workflow(
                 manager,
                 workspace,
@@ -369,36 +527,68 @@ def run_menu(
     input_fn: InputFunction = input,
     print_fn: PrintFunction = print,
 ) -> int:
-    manager.initialize()
+    application = DefinalyzerApplication(manager)
+    application.initialize()
 
     while True:
         print_fn("")
         print_fn("DEFINALYZER")
-        print_fn("1. Create a project")
-        print_fn("2. Run complete workflow")
-        print_fn("3. Crawl documentation")
+        print_fn("")
+        print_fn("RESEARCH WORKFLOW")
+        print_fn("1. Set up a new project (setup only)")
+        print_fn("2. Analyze a project (complete research workflow)")
+        print_fn("")
+        print_fn("INDIVIDUAL RESEARCH STEPS")
+        print_fn("3. Crawl or update documentation")
         print_fn("4. Generate research pages")
-        print_fn("5. Generate registry")
-        print_fn("6. Create verification plan")
+        print_fn("5. Generate registry and token data")
+        print_fn("6. Generate verification checklist")
+        print_fn("")
+        print_fn("VERIFICATION WORKFLOW")
         print_fn("7. Collect blockchain evidence")
-        print_fn("8. Create evidence evaluation proposals")
-        print_fn("9. Review pending evaluations")
-        print_fn("10. Configure or test AI provider")
-        print_fn("11. View project status")
-        print_fn("12. Refresh current token supply data")
-        print_fn("13. Explain a research-page entry")
-        print_fn("14. Manage official sources")
-        print_fn("15. Add or update a token manually")
-        print_fn("16. Refresh Obsidian vault indexes")
-        print_fn("17. Exit")
-        choice = input_fn("Choice [1-17]: ").strip()
+        print_fn("8. Generate evidence assessment proposals")
+        print_fn("9. Review and approve assessments")
+        print_fn("10. Draft or revise an optional Dune query")
+        print_fn("")
+        print_fn("RESEARCH TOOLS AND SETTINGS")
+        print_fn("11. Configure or test AI provider")
+        print_fn("12. View project status")
+        print_fn("13. Refresh current token supply data")
+        print_fn("14. Ask a question about project research")
+        print_fn("15. Manage official sources")
+        print_fn("16. Add or update a token manually")
+        print_fn("17. Refresh Obsidian vault indexes")
+        print_fn("18. Delete a project and its generated data")
+        print_fn("")
+        print_fn("ADVANCED TOOLS")
+        print_fn("19. Open standalone evidence collector (advanced)")
+        print_fn("20. Open local dashboard")
+        print_fn("21. Exit")
+        choice = input_fn("Choice [1-21]: ").strip()
 
         try:
             if choice == "1":
-                _menu_create(manager, input_fn, print_fn)
+                workspace = _menu_create(manager, input_fn, print_fn)
+                if _yes_no(
+                    input_fn,
+                    "Run the complete research analysis now? [y/N]: ",
+                ):
+                    code = _complete_workflow(
+                        manager,
+                        workspace,
+                        refresh=False,
+                        print_fn=print_fn,
+                    )
+                    if code == 0:
+                        _guided_post_analysis(
+                            manager,
+                            workspace,
+                            input_fn=input_fn,
+                            print_fn=print_fn,
+                        )
             elif choice == "2":
                 workspace = _menu_project(manager, input_fn, print_fn)
-                _complete_workflow(
+                code = _complete_workflow(
                     manager,
                     workspace,
                     refresh=_yes_no(
@@ -407,6 +597,13 @@ def run_menu(
                     ),
                     print_fn=print_fn,
                 )
+                if code == 0:
+                    _guided_post_analysis(
+                        manager,
+                        workspace,
+                        input_fn=input_fn,
+                        print_fn=print_fn,
+                    )
             elif choice == "3":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 docs_url = (
@@ -428,6 +625,10 @@ def run_menu(
                 )
             elif choice == "4":
                 workspace = _menu_project(manager, input_fn, print_fn)
+                if not _menu_prerequisites_ready(
+                    workspace, choice="4", print_fn=print_fn
+                ):
+                    continue
                 print_fn("Available research pages:")
                 names = sorted(TEMPLATE_FILES)
                 for index, name in enumerate(names, start=1):
@@ -447,36 +648,74 @@ def run_menu(
                 workspace = _menu_project(manager, input_fn, print_fn)
                 command = "registry" if choice == "5" else "verification-plan"
                 if command == "registry":
-                    _registry(manager, workspace, print_fn)
+                    if _menu_prerequisites_ready(
+                        workspace, choice="5", print_fn=print_fn
+                    ):
+                        _registry(manager, workspace, print_fn)
                 else:
-                    _verification_plan(manager, workspace, print_fn)
+                    if _menu_prerequisites_ready(
+                        workspace, choice="6", print_fn=print_fn
+                    ):
+                        _verification_plan(manager, workspace, print_fn)
             elif choice == "7":
                 workspace = _menu_project(manager, input_fn, print_fn)
-                _collect(
-                    manager,
-                    workspace,
-                    input_fn=input_fn,
-                    print_fn=print_fn,
-                )
+                if _menu_prerequisites_ready(
+                    workspace, choice="7", print_fn=print_fn
+                ):
+                    if _yes_no(
+                        input_fn,
+                        "Collect this project's scanner-ready evidence now? "
+                        "[y/N]: ",
+                    ):
+                        ready = _collect_planned_verification(
+                            manager,
+                            workspace,
+                            job_path=(
+                                workspace.jobs_directory
+                                / "verification-plan.json"
+                            ),
+                            print_fn=print_fn,
+                        )
+                        if not ready:
+                            print_fn(
+                                "Planned evidence remains incomplete. Check "
+                                "the reported RPC errors before retrying."
+                            )
+                    else:
+                        print_fn("Planned evidence collection was not started.")
             elif choice == "8":
                 workspace = _menu_project(manager, input_fn, print_fn)
-                _evaluate(manager, workspace, print_fn)
+                if _menu_prerequisites_ready(
+                    workspace, choice="8", print_fn=print_fn
+                ):
+                    _evaluate(manager, workspace, print_fn)
             elif choice == "9":
                 workspace = _menu_project(manager, input_fn, print_fn)
-                _review(
+                if _menu_prerequisites_ready(
+                    workspace, choice="9", print_fn=print_fn
+                ):
+                    _review(
+                        manager,
+                        workspace,
+                        input_fn=input_fn,
+                        print_fn=print_fn,
+                    )
+            elif choice == "10":
+                workspace = _menu_project(manager, input_fn, print_fn)
+                _menu_dune_assistant(
                     manager,
                     workspace,
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "10":
-                _menu_provider(manager, input_fn, print_fn)
             elif choice == "11":
+                _menu_provider(manager, input_fn, print_fn)
+            elif choice == "12":
                 name = input_fn(
                     "Project name (leave blank to list all): "
                 ).strip()
                 _show_status(manager, name or None, print_fn)
-            elif choice == "12":
+            elif choice == "13":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _market_data(
                     workspace,
@@ -486,7 +725,7 @@ def run_menu(
                     ),
                     print_fn=print_fn,
                 )
-            elif choice == "13":
+            elif choice == "14":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _menu_analyst_review(
                     manager,
@@ -494,7 +733,7 @@ def run_menu(
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "14":
+            elif choice == "15":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _menu_sources(
                     manager,
@@ -502,7 +741,7 @@ def run_menu(
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "15":
+            elif choice == "16":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _menu_manual_token(
                     manager,
@@ -510,16 +749,34 @@ def run_menu(
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "16":
-                paths = manager.refresh_vault_indexes()
+            elif choice == "17":
+                paths = application.refresh_indexes()
                 print_fn(f"Refreshed {len(paths)} vault indexes.")
                 for path in paths:
                     print_fn(f"Index: {path}")
-            elif choice == "17":
+            elif choice == "18":
+                _menu_delete_project(
+                    manager,
+                    input_fn=input_fn,
+                    print_fn=print_fn,
+                )
+            elif choice == "19":
+                workspace = _menu_project(manager, input_fn, print_fn)
+                _collect(
+                    manager,
+                    workspace,
+                    input_fn=input_fn,
+                    print_fn=print_fn,
+                )
+            elif choice == "20":
+                from .dashboard import run_dashboard
+
+                run_dashboard(manager, print_fn=print_fn)
+            elif choice == "21":
                 print_fn("Goodbye.")
                 return 0
             else:
-                print_fn("Please enter a number from 1 to 17.")
+                print_fn("Please enter a number from 1 to 21.")
         except (OSError, RuntimeError, ValueError) as exc:
             print_fn(f"Stopped: {exc}")
 
@@ -528,24 +785,264 @@ def _menu_create(
     manager: WorkspaceManager,
     input_fn: InputFunction,
     print_fn: PrintFunction,
-) -> None:
+) -> ProjectWorkspace:
     name = _required(input_fn, "Project name: ")
-    entity_value = (
-        input_fn("Entity type [protocol/chain/token] (protocol): ").strip().lower()
-        or "protocol"
+    print_fn("Entity type:")
+    print_fn("  1. Protocol (default)")
+    print_fn("  2. Chain")
+    print_fn("  3. Token")
+    entity_choice = input_fn("Entity type [1-3] (1): ").strip()
+    entity_value = {
+        "": "protocol",
+        "1": "protocol",
+        "2": "chain",
+        "3": "token",
+    }.get(entity_choice)
+    if entity_value is None:
+        raise ValueError("Entity type must be 1, 2, or 3.")
+    print_fn(
+        "Use the URL for the exact protocol or product documentation section. "
+        "An umbrella homepage may combine separate products into one analysis."
     )
     docs_url = input_fn("Documentation URL (optional): ").strip() or None
     verification = _yes_no(
         input_fn,
         "Plan blockchain verification later? [y/N]: ",
     )
-    workspace = manager.create_project(
+    workspace = DefinalyzerApplication(manager).create_project(
         name=name,
         entity_type=entity_value,
         docs_url=docs_url,
         verification_status="pending" if verification else "not_requested",
     )
     _print_created(workspace, print_fn)
+    return workspace
+
+
+def _menu_delete_project(
+    manager: WorkspaceManager,
+    *,
+    input_fn: InputFunction,
+    print_fn: PrintFunction,
+) -> None:
+    workspace = _menu_project(manager, input_fn, print_fn)
+    print_fn("")
+    print_fn(f"Permanently delete project: {workspace.name}")
+    print_fn(f"- Project state, jobs, and evidence: {workspace.project_root}")
+    print_fn(f"- Collected documentation: {workspace.sources_directory}")
+    print_fn(f"- Registry data: {workspace.registry_directory}")
+    print_fn(f"- Research notes: {workspace.vault_entity_directory}")
+    print_fn(f"- Verification notes: {workspace.verification_directory}")
+    print_fn(
+        "- Analyst reviews and token pages used only by this project will "
+        "also be removed."
+    )
+    confirmation = input_fn(
+        f'Type the exact project name "{workspace.name}" to delete it: '
+    ).strip()
+    if confirmation != workspace.name:
+        print_fn("Deletion cancelled; the project name did not match.")
+        return
+
+    removed = DefinalyzerApplication(manager).delete_project(workspace.slug)
+    print_fn(f"Deleted project {workspace.name}.")
+    print_fn(f"Removed {len(removed)} generated folders.")
+    print_fn("Obsidian vault indexes were refreshed.")
+
+
+def _guided_post_analysis(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    input_fn: InputFunction,
+    print_fn: PrintFunction,
+) -> None:
+    """Offer safe continuation steps after a newly created project's analysis."""
+
+    workspace = manager.load_project(workspace.slug)
+    print_fn("")
+    print_fn(f"Research analysis complete for {workspace.name}.")
+
+    verification_status = str(
+        workspace.document.get("verification_status", "not_requested")
+    )
+    if verification_status == "not_requested":
+        print_fn(
+            "Blockchain verification was not requested. Research is ready "
+            "for use; verification can be enabled or run separately later."
+        )
+        return
+    if verification_status == "unsupported":
+        print_fn(
+            "This project is configured as unsupported for automated "
+            "verification. Its research remains usable."
+        )
+        return
+
+    _print_supported_collector_chains(print_fn)
+    job_path = workspace.jobs_directory / "verification-plan.json"
+    if not job_path.exists():
+        print_fn(
+            "No scanner-ready requests were created. Verification entries "
+            "remain categorized for manual analyst review."
+        )
+        return
+
+    job = load_collection_job(job_path)
+    planned_chains = sorted(dict.fromkeys(request.chain for request in job.requests))
+    print_fn(
+        f"Scanner-ready requests: {len(job.requests)} across "
+        f"{', '.join(planned_chains)}."
+    )
+    if not _yes_no(
+        input_fn,
+        "Collect scanner-ready blockchain evidence now? [y/N]: ",
+    ):
+        print_fn("Evidence collection remains available as menu option 7.")
+        return
+
+    evidence_ready = _collect_planned_verification(
+        manager,
+        workspace,
+        job_path=job_path,
+        print_fn=print_fn,
+    )
+    if not evidence_ready:
+        return
+    if not _yes_no(
+        input_fn,
+        "Generate evidence assessment proposals now? [y/N]: ",
+    ):
+        print_fn("Assessment generation remains available as menu option 8.")
+        return
+    if _evaluate(manager, workspace, print_fn) != 0:
+        print_fn("No reviewable assessment proposals were generated.")
+        return
+    if pending_proposals(workspace):
+        print_fn(
+            "Evidence assessment proposals are ready for optional human "
+            "review. Research and automated collection are complete; use "
+            "menu option 9 when you intentionally want to approve or reject "
+            "them."
+        )
+
+
+def _print_supported_collector_chains(print_fn: PrintFunction) -> None:
+    print_fn("")
+    print_fn("Automated blockchain evidence collection currently supports:")
+    for configuration in SUPPORTED_CHAINS.values():
+        print_fn(f"- {configuration.name} (chain ID {configuration.chain_id})")
+    print_fn(
+        "Other networks and off-chain claims remain visible as manual "
+        "verification tasks; they are not treated as disproven."
+    )
+
+
+def _collect_planned_verification(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    job_path: Path,
+    print_fn: PrintFunction,
+) -> bool:
+    """Execute the scanner-ready job produced by verification planning."""
+
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        load_environment_file(env_path)
+    job = load_collection_job(job_path)
+    fingerprint = verification_job_fingerprint(job_path)
+    suffix = fingerprint[:12]
+    evidence_path = workspace.evidence_directory / f"{job.name}-{suffix}.json"
+    summary_path = workspace.evidence_directory / f"{job.name}-{suffix}.md"
+    if evidence_path.exists() and summary_path.exists():
+        existing = json.loads(evidence_path.read_text(encoding="utf-8"))
+        if not isinstance(existing, dict):
+            raise ValueError(f"Evidence bundle is not a JSON object: {evidence_path}")
+        if evidence_job_fingerprint(existing) != fingerprint:
+            raise ValueError(
+                "Existing planned evidence does not match the current "
+                f"verification job: {evidence_path}"
+            )
+        print_fn(f"Reusing existing evidence: {evidence_path}")
+        records = existing.get("records", [])
+        if not isinstance(records, list):
+            raise ValueError(f"Evidence records are invalid: {evidence_path}")
+        statuses = [
+            record.get("status")
+            for record in records
+            if isinstance(record, dict)
+        ]
+        if len(statuses) != len(records) or any(
+            status not in {"collected", "partial", "failed"}
+            for status in statuses
+        ):
+            raise ValueError(f"Evidence record statuses are invalid: {evidence_path}")
+        collected = statuses.count("collected")
+        partial = statuses.count("partial")
+        failed = statuses.count("failed")
+        expected = {request.name for request in job.requests}
+        present = {
+            str(record.get("request_name"))
+            for record in records
+            if isinstance(record, dict)
+        }
+        if present != expected:
+            raise ValueError(
+                "Existing evidence does not cover exactly the current planned "
+                "verification requests."
+            )
+        stage_status = "complete" if not partial and not failed else "partial"
+        workspace = manager.update_stage(
+            workspace,
+            "evidence_collection",
+            stage_status,
+            detail=f"{collected} collected; {partial} partial; {failed} failed",
+        )
+        if stage_status == "complete":
+            manager.set_verification_status(workspace, "evidence_collected")
+        return bool(collected or partial)
+    if evidence_path.exists() or summary_path.exists():
+        raise FileExistsError(
+            "Planned evidence output is incomplete; refusing to overwrite "
+            f"existing files under {workspace.evidence_directory}."
+        )
+
+    execution_job = replace(
+        job,
+        metadata={**job.metadata, JOB_FINGERPRINT_KEY: fingerprint},
+    )
+    bundle = execute_collection_job(execution_job, job_source=str(job_path))
+    write_evidence_bundle(bundle, evidence_path)
+    write_evidence_summary(bundle, summary_path)
+    collected = sum(record.status == "collected" for record in bundle.records)
+    partial = sum(record.status == "partial" for record in bundle.records)
+    failed = sum(record.status == "failed" for record in bundle.records)
+    expected = {request.name for request in job.requests}
+    present = {record.request_name for record in bundle.records}
+    fully_covered = present == expected
+    stage_complete = fully_covered and not partial and not failed
+    workspace = manager.update_stage(
+        workspace,
+        "evidence_collection",
+        "complete" if stage_complete else "partial",
+        detail=(
+            f"{collected} collected; {partial} partial; {failed} failed; "
+            f"{len(present & expected)}/{len(expected)} planned requests covered"
+        ),
+    )
+    if stage_complete:
+        manager.set_verification_status(workspace, "evidence_collected")
+    print_fn(f"Evidence: {evidence_path}")
+    print_fn(f"Evidence summary: {summary_path}")
+    print_fn(f"Collected: {collected}; partial: {partial}; failed: {failed}")
+    if failed and not collected and not partial:
+        print_fn(
+            "All scanner-ready requests failed, so assessment generation "
+            "was not offered. Check RPC configuration and retry option 7."
+        )
+        return False
+    return bool(collected or partial)
 
 
 def _menu_project(
@@ -553,7 +1050,8 @@ def _menu_project(
     input_fn: InputFunction,
     print_fn: PrintFunction,
 ) -> ProjectWorkspace:
-    projects = manager.list_projects()
+    application = DefinalyzerApplication(manager)
+    projects = application.list_projects()
 
     if not projects:
         raise ValueError("No projects exist. Create a project first.")
@@ -566,8 +1064,8 @@ def _menu_project(
     if value.isdigit():
         index = int(value)
         if 1 <= index <= len(projects):
-            return projects[index - 1]
-    return manager.load_project(value)
+            return application.load_project(projects[index - 1].slug)
+    return application.load_project(value)
 
 
 def _crawl(
@@ -583,6 +1081,7 @@ def _crawl(
 ) -> int:
     from crawler.github_importer import is_github_repository_url
 
+    source_fingerprint_before = source_corpus_fingerprint(workspace)
     if workspace.document.get("docs_url") != docs_url:
         workspace = manager.set_docs_url(workspace, docs_url)
 
@@ -646,7 +1145,7 @@ def _crawl(
             break
     write_coverage_source(workspace)
     sync_research_coverage(workspace)
-    manager.update_stage(
+    workspace = manager.update_stage(
         workspace,
         "crawl",
         status,
@@ -654,6 +1153,12 @@ def _crawl(
             f"{summary.saved} saved, {summary.skipped} skipped, "
             f"{summary.failed} failed"
         ),
+    )
+    _invalidate_after_source_change(
+        manager,
+        workspace,
+        previous_fingerprint=source_fingerprint_before,
+        print_fn=print_fn,
     )
     print_fn(f"Project sources: {workspace.sources_directory}")
     return 0 if not summary.failed else 2
@@ -666,6 +1171,11 @@ def _collect(
     input_fn: InputFunction = input,
     print_fn: PrintFunction = print,
 ) -> int:
+    print_fn(
+        "Opening the standalone advanced evidence collector. Its result will be saved "
+        "to this project, but it will not mark the planned verification "
+        "checklist complete."
+    )
     env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
         load_environment_file(env_path)
@@ -673,12 +1183,6 @@ def _collect(
         input_fn=input_fn,
         print_fn=print_fn,
         working_directory=workspace.project_root,
-    )
-    manager.update_stage(
-        workspace,
-        "evidence_collection",
-        "complete" if exit_code == 0 else "partial",
-        detail=f"Collector menu exit code {exit_code}",
     )
     return exit_code
 
@@ -703,6 +1207,11 @@ def _extract(
         print_fn(
             f"Sources: {plan.source_files} files, "
             f"{plan.source_characters:,} characters"
+        )
+        print_fn(
+            f"Reference material retained locally but excluded from AI: "
+            f"{plan.excluded_source_files} files, "
+            f"{plan.excluded_source_characters:,} characters"
         )
         print_fn(f"Planned mode: {plan.mode}")
         print_fn(f"Initial chunks: {plan.initial_chunks}")
@@ -735,23 +1244,37 @@ def _extract(
         )
         raise
 
+    record_research_page(
+        workspace,
+        template_name=template_name,
+        prompts_root=PROJECT_ROOT / "prompts",
+    )
     missing_pages = [
         filename
         for filename in OUTPUT_FILES.values()
         if not (workspace.vault_entity_directory / filename).exists()
     ]
-    research_status = "complete" if not missing_pages else "partial"
-    detail = (
-        "Generated all research pages"
-        if not missing_pages
-        else f"Generated {result.template}: {result.output_path.name}"
+    current_pages = research_pages_current(
+        workspace,
+        prompts_root=PROJECT_ROOT / "prompts",
     )
-    manager.update_stage(
+    research_status = "complete" if current_pages else "partial"
+    detail = (
+        "Generated all current research pages"
+        if current_pages
+        else (
+            f"Generated {result.template}: {result.output_path.name}; "
+            f"{len(missing_pages)} pages missing or other pages require refresh"
+        )
+    )
+    workspace = manager.update_stage(
         workspace,
         "research",
         research_status,
         detail=detail,
     )
+    _invalidate_after_research_change(manager, workspace)
+    _record_extraction_usage(workspace, result)
     print_fn(f"Research page: {result.output_path}")
     print_fn(
         f"Sources: {result.source_files} files, "
@@ -762,7 +1285,58 @@ def _extract(
         f"Mode: {result.mode}; provider calls: {result.provider_calls}; "
         f"reused intermediate results: {result.reused_calls}"
     )
+    print_fn(
+        "Reference material retained locally but excluded from AI: "
+        f"{result.excluded_source_files} files, "
+        f"{result.excluded_source_characters:,} characters"
+    )
+    print_fn(
+        "Approximate provider input: "
+        f"{result.provider_input_characters:,} characters"
+    )
     return 0
+
+
+def _record_extraction_usage(workspace, result) -> Path:
+    """Persist provider-call accounting without relying on provider billing."""
+
+    path = workspace.project_root / "extraction" / "usage.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = {"schema_version": 1, "runs": []}
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and isinstance(loaded.get("runs"), list):
+                document = loaded
+        except (json.JSONDecodeError, OSError):
+            pass
+    document["runs"].append(
+        {
+            "completed_at": datetime.now(timezone.utc).isoformat(
+                timespec="seconds"
+            ),
+            "template": result.template,
+            "mode": result.mode,
+            "provider": result.provider,
+            "selected_source_files": result.source_files,
+            "selected_source_characters": result.source_characters,
+            "excluded_source_files": result.excluded_source_files,
+            "excluded_source_characters": result.excluded_source_characters,
+            "provider_calls": result.provider_calls,
+            "reused_calls": result.reused_calls,
+            "approximate_provider_input_characters": (
+                result.provider_input_characters
+            ),
+        }
+    )
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(document, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    temporary.replace(path)
+    return path
 
 
 def _unconfigured_stage(
@@ -811,7 +1385,7 @@ def _run_complete_workflow(
 ) -> int:
     """Internal implementation protected by the per-project run lock."""
 
-    print_fn(f"Complete workflow: {workspace.name}")
+    print_fn(f"Analyze Project: {workspace.name}")
     print_fn("Existing generated outputs will be reused." if not refresh else
              "Refresh enabled: sources and generated research will be rebuilt.")
 
@@ -833,7 +1407,7 @@ def _run_complete_workflow(
     if should_crawl:
         if not docs_url:
             raise ValueError(
-                "The complete workflow needs a documentation URL or existing "
+                "Project analysis needs a documentation URL or existing "
                 "collected source pages."
             )
         print_fn("")
@@ -842,7 +1416,7 @@ def _run_complete_workflow(
             manager,
             workspace,
             docs_url=str(docs_url),
-            pattern=DEFAULT_PATTERN,
+            pattern=_default_crawl_pattern(str(docs_url)),
             refresh=refresh,
             retries=DEFAULT_RETRIES,
             print_fn=print_fn,
@@ -850,7 +1424,7 @@ def _run_complete_workflow(
         if crawl_code:
             raise RuntimeError(
                 "Primary documentation collection did not complete. Fix the "
-                "reported crawl failures, then rerun the complete workflow."
+                "reported crawl failures, then rerun Analyze Project."
             )
         workspace = manager.load_project(workspace.slug)
         source_pages = _collected_source_pages(workspace)
@@ -874,11 +1448,25 @@ def _run_complete_workflow(
 
     print_fn("")
     print_fn("[2/5] Generating research pages")
+    # A project created before dependency tracking may already have the full
+    # research set even if its old manifest did not record the stage cleanly.
+    bootstrap_legacy_research(
+        workspace,
+        prompts_root=PROJECT_ROOT / "prompts",
+    )
+    stale_research = set(stale_research_pages(
+        workspace,
+        prompts_root=PROJECT_ROOT / "prompts",
+    ))
     generated = 0
     reused = 0
     for template_name, filename in OUTPUT_FILES.items():
         output_path = workspace.vault_entity_directory / filename
-        if output_path.exists() and not refresh:
+        if (
+            output_path.exists()
+            and not refresh
+            and template_name not in stale_research
+        ):
             reused += 1
             print_fn(f"Reused research page: {filename}")
             continue
@@ -887,11 +1475,20 @@ def _run_complete_workflow(
             workspace,
             template_name=template_name,
             mode="auto",
-            refresh=refresh,
+            refresh=output_path.exists(),
             print_fn=print_fn,
         )
         generated += 1
         workspace = manager.load_project(workspace.slug)
+    workspace = manager.load_project(workspace.slug)
+    if not research_pages_current(
+        workspace,
+        prompts_root=PROJECT_ROOT / "prompts",
+    ):
+        raise RuntimeError(
+            "Research generation finished without bringing every page up to "
+            "the current source and prompt fingerprint."
+        )
     manager.update_stage(
         workspace,
         "research",
@@ -933,7 +1530,15 @@ def _run_complete_workflow(
         _verification_plan(manager, workspace, print_fn)
 
     print_fn("")
-    print_fn("Complete workflow finished.")
+    print_fn("Project analysis finished.")
+    try:
+        indexes = manager.refresh_vault_indexes()
+        print_fn(f"Refreshed {len(indexes)} Obsidian vault indexes.")
+    except (OSError, ValueError) as exc:
+        print_fn(
+            "Research completed, but vault navigation indexes could not be "
+            f"refreshed: {exc}"
+        )
     print_fn(f"Obsidian vault: {workspace.vault_root}")
     return 0
 
@@ -960,7 +1565,7 @@ def _project_workflow_lock(workspace: ProjectWorkspace):
     except (OSError, BlockingIOError) as exc:
         handle.close()
         raise RuntimeError(
-            f"A complete workflow is already running for {workspace.name}. "
+            f"A project analysis is already running for {workspace.name}. "
             "Wait for it to finish before starting another."
         ) from exc
     try:
@@ -1007,6 +1612,10 @@ def _registry(
     print_fn: PrintFunction,
 ) -> int:
     registry_path = workspace.registry_directory / "registry.json"
+    registry_fingerprint_before = json_fingerprint(
+        registry_path,
+        ignored_keys=("generated_at",),
+    )
     provider = None
     if registry_needs_token_discovery(workspace):
         settings = SettingsManager(manager.root).load()
@@ -1051,7 +1660,7 @@ def _registry(
         if coverage.categories["tokenomics"] == "collected"
         else "partial"
     )
-    manager.update_stage(
+    workspace = manager.update_stage(
         workspace,
         "registry",
         registry_status,
@@ -1061,6 +1670,12 @@ def _registry(
             f"{len(result.linked_pages)} linked research pages; "
             f"token source coverage: {coverage.categories['tokenomics']}"
         ),
+    )
+    _invalidate_after_registry_change(
+        manager,
+        workspace,
+        previous_fingerprint=registry_fingerprint_before,
+        print_fn=print_fn,
     )
     print_fn(f"Registry: {result.registry_path}")
     if result.network_page:
@@ -1133,7 +1748,18 @@ def _menu_manual_token(
         utility=field("Utility/value rights", "utility", "Not documented"),
         source=field("Official source URL or source note", "source", ""),
     )
+    registry_path = workspace.registry_directory / "registry.json"
+    registry_fingerprint_before = json_fingerprint(
+        registry_path,
+        ignored_keys=("generated_at",),
+    )
     result = upsert_manual_token(workspace=workspace, token=token)
+    _invalidate_after_registry_change(
+        manager,
+        workspace,
+        previous_fingerprint=registry_fingerprint_before,
+        print_fn=print_fn,
+    )
     print_fn(f"Saved token {token.symbol} in {result.registry_path}")
     for page in result.token_pages:
         if page.parent.name.casefold() == token.symbol.casefold():
@@ -1152,8 +1778,13 @@ def _market_data(
     force: bool,
     print_fn: PrintFunction,
 ) -> int:
-    result = refresh_market_data(workspace=workspace, force=force)
-    pages = refresh_token_pages_from_registry(workspace)
+    application = DefinalyzerApplication(WorkspaceManager(workspace.root))
+    service_result = application.refresh_market_data(
+        workspace=workspace,
+        force=force,
+    )
+    result = service_result.refresh
+    pages = service_result.token_pages
     available = sum(
         snapshot.status == "available" for snapshot in result.snapshots
     )
@@ -1177,31 +1808,36 @@ def _analyst_review(
     manager: WorkspaceManager,
     workspace: ProjectWorkspace,
     *,
-    page: Path,
-    section: ReviewSection,
+    page: Path | None,
+    section: ReviewSection | None,
     question: str,
+    deep: bool,
     save: bool,
     print_fn: PrintFunction,
 ) -> int:
-    settings = SettingsManager(manager.root).load()
-    provider = create_provider(settings["llm"])
-    result = run_analyst_review(
+    application = DefinalyzerApplication(
+        manager,
+        provider_factory=create_provider,
+    )
+    result = application.ask(
         workspace=workspace,
-        provider=provider,
         page=page,
         section=section,
         question=question,
+        deep=deep,
+        save=save,
     )
     print_fn("")
-    print_fn(f"Source: {page.name} > {section.title}")
-    print_fn("Scope: selected section only")
+    print_fn(f"Scope: {result.scope}")
+    print_fn(f"Retrieved passages: {len(result.passages)}")
+    for passage in result.passages:
+        print_fn(
+            f"- {passage.display_path} > {passage.heading} "
+            f"({passage.source_type})"
+        )
     print_fn("")
     print_fn(result.answer)
-    if save:
-        result = save_analyst_review(
-            workspace=workspace,
-            result=result,
-        )
+    if result.saved_path is not None:
         print_fn("")
         print_fn(f"Saved non-canonical review: {result.saved_path}")
     return 0
@@ -1216,32 +1852,39 @@ def _menu_analyst_review(
 ) -> None:
     pages = list_review_pages(workspace)
     if not pages:
-        raise ValueError(
-            "No generated research pages exist for this project."
-        )
-    print_fn("Research pages:")
-    for index, page in enumerate(pages, start=1):
-        print_fn(f"  {index}. {page.stem}")
-    selected_page = _required(input_fn, "Page number: ")
-    if not selected_page.isdigit() or not 1 <= int(selected_page) <= len(pages):
-        raise ValueError("Invalid research page number.")
-    page = pages[int(selected_page) - 1]
-
-    sections = parse_review_sections(page)
-    if not sections:
-        raise ValueError(f"No Markdown headings were found in {page.name}.")
-    print_fn(f"Sections in {page.stem}:")
-    for index, section in enumerate(sections, start=1):
-        indent = "  " * max(section.level - 1, 0)
-        print_fn(f"  {index}. {indent}{section.title}")
-    selected_section = _required(input_fn, "Section number: ")
-    if (
-        not selected_section.isdigit()
-        or not 1 <= int(selected_section) <= len(sections)
+        raise ValueError("No generated research pages exist for this project.")
+    question = _required(input_fn, "Question about this project: ")
+    deep = _yes_no(
+        input_fn,
+        "Deep search collected source documentation too? [y/N]: ",
+    )
+    page = None
+    section = None
+    if _yes_no(
+        input_fn,
+        "Restrict this question to one page and heading? [y/N]: ",
     ):
-        raise ValueError("Invalid section number.")
-    section = sections[int(selected_section) - 1]
-    question = _required(input_fn, "Question about this section: ")
+        print_fn("Research pages:")
+        for index, candidate in enumerate(pages, start=1):
+            print_fn(f"  {index}. {candidate.stem}")
+        selected_page = _required(input_fn, "Page number: ")
+        if not selected_page.isdigit() or not 1 <= int(selected_page) <= len(pages):
+            raise ValueError("Invalid research page number.")
+        page = pages[int(selected_page) - 1]
+        sections = parse_review_sections(page)
+        if not sections:
+            raise ValueError(f"No populated Markdown headings were found in {page.name}.")
+        print_fn(f"Populated sections in {page.stem}:")
+        for index, candidate in enumerate(sections, start=1):
+            indent = "  " * max(candidate.level - 1, 0)
+            print_fn(f"  {index}. {indent}{candidate.title}")
+        selected_section = _required(input_fn, "Section number: ")
+        if (
+            not selected_section.isdigit()
+            or not 1 <= int(selected_section) <= len(sections)
+        ):
+            raise ValueError("Invalid section number.")
+        section = sections[int(selected_section) - 1]
     save = _yes_no(
         input_fn,
         "Save this AI explanation in the Obsidian vault? [y/N]: ",
@@ -1252,9 +1895,107 @@ def _menu_analyst_review(
         page=page,
         section=section,
         question=question,
+        deep=deep,
         save=save,
         print_fn=print_fn,
     )
+
+
+def _dune_assistant(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    verification_id: str,
+    feedback_type: str | None,
+    feedback: str | None,
+    print_fn: PrintFunction,
+) -> int:
+    application = DefinalyzerApplication(
+        manager,
+        provider_factory=create_provider,
+    )
+    result = application.dune_dialogue(
+        workspace=workspace,
+        verification_id=verification_id,
+        feedback_type=feedback_type,
+        feedback=feedback,
+    )
+    print_fn("")
+    print_fn(
+        f"Dune query draft {result.candidate.verification_id}, "
+        f"version {result.version}"
+    )
+    print_fn("")
+    print_fn(result.response)
+    print_fn("")
+    print_fn("This query was not executed and no verification status changed.")
+    print_fn(f"Dialogue note: {result.note_path}")
+    return 0
+
+
+def _menu_dune_assistant(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    input_fn: InputFunction,
+    print_fn: PrintFunction,
+) -> None:
+    candidates = DefinalyzerApplication(manager).dune_candidates(workspace)
+    if not candidates:
+        raise ValueError(
+            "This checklist has no checks marked as optional Dune candidates."
+        )
+    print_fn("Optional Dune query candidates:")
+    for index, candidate in enumerate(candidates, start=1):
+        print_fn(
+            f"  {index}. {candidate.verification_id} - "
+            f"{candidate.title or candidate.claim}"
+        )
+    selected = _required(input_fn, "Verification number: ")
+    if not selected.isdigit() or not 1 <= int(selected) <= len(candidates):
+        raise ValueError("Invalid Dune verification number.")
+    candidate = candidates[int(selected) - 1]
+
+    while True:
+        session = (
+            workspace.project_root
+            / "dune-assistant"
+            / f"{candidate.verification_id.lower()}.json"
+        )
+        if not session.exists():
+            feedback_type = None
+            feedback = None
+        else:
+            print_fn("")
+            print_fn("Continue the saved Dune dialogue:")
+            print_fn("  1. Paste a Dune error and revise the query")
+            print_fn("  2. Add context and revise the query")
+            print_fn("  3. Paste a result or result link and check query coverage")
+            print_fn("  4. Return to the main menu")
+            action = _required(input_fn, "Dune dialogue option [1-4]: ")
+            if action == "4":
+                return
+            feedback_type = {
+                "1": "error",
+                "2": "context",
+                "3": "result",
+            }.get(action)
+            if feedback_type is None:
+                raise ValueError("Invalid Dune dialogue option.")
+            feedback = _required(
+                input_fn,
+                "Paste the exact error, context, result, or result link: ",
+            )
+        _dune_assistant(
+            manager,
+            workspace,
+            verification_id=candidate.verification_id,
+            feedback_type=feedback_type,
+            feedback=feedback,
+            print_fn=print_fn,
+        )
+        if not _yes_no(input_fn, "Continue this Dune dialogue now? [y/N]: "):
+            return
 
 
 def _source_command(
@@ -1278,7 +2019,7 @@ def _source_command(
                 item for item in summary.sources if item.category == key
             ):
                 print_fn(
-                    f"  {source.source_id}: {source.status} — {source.url}"
+                    f"  {source.source_id}: {source.status} - {source.url}"
                 )
         return 0
 
@@ -1287,6 +2028,7 @@ def _source_command(
     if action == "add":
         if not url:
             raise ValueError("--url is required when adding a source.")
+        source_fingerprint_before = source_corpus_fingerprint(workspace)
         source = add_official_source(
             workspace,
             category=category,
@@ -1294,6 +2036,12 @@ def _source_command(
         )
         write_coverage_source(workspace)
         sync_research_coverage(workspace)
+        _invalidate_after_source_change(
+            manager,
+            workspace,
+            previous_fingerprint=source_fingerprint_before,
+            print_fn=print_fn,
+        )
         print_fn(f"Official source registered: {source.source_id}")
         print_fn(
             "Run the source crawl action before this category is considered "
@@ -1306,6 +2054,7 @@ def _source_command(
         raise ValueError(
             f"No official sources are registered for category {category}."
         )
+    source_fingerprint_before = source_corpus_fingerprint(workspace)
     failures = 0
     for source in sources:
         try:
@@ -1334,15 +2083,21 @@ def _source_command(
                 status="failed",
                 detail=str(exc),
             )
-            print_fn(f"Source failed: {source.url} — {exc}")
+            print_fn(f"Source failed: {source.url} - {exc}")
     write_coverage_source(workspace)
     sync_research_coverage(workspace)
     summary = ensure_source_coverage(workspace)
-    manager.update_stage(
+    workspace = manager.update_stage(
         workspace,
         "crawl",
         "partial" if failures else "complete",
         detail=f"Official source coverage: {summary.status}",
+    )
+    _invalidate_after_source_change(
+        manager,
+        workspace,
+        previous_fingerprint=source_fingerprint_before,
+        print_fn=print_fn,
     )
     print_fn(f"Overall source coverage: {summary.status}")
     return 2 if failures else 0
@@ -1455,6 +2210,12 @@ def _verification_plan(
     workspace: ProjectWorkspace,
     print_fn: PrintFunction,
 ) -> int:
+    planned_job_path = workspace.jobs_directory / "verification-plan.json"
+    previous_job_fingerprint = (
+        verification_job_fingerprint(planned_job_path)
+        if planned_job_path.exists()
+        else None
+    )
     settings = SettingsManager(manager.root).load()
     provider = create_provider(settings["llm"])
     try:
@@ -1480,13 +2241,26 @@ def _verification_plan(
         status,
         detail=(
             f"{result.ready_requests} scanner-ready requests; "
-            f"{result.manual_claims} manual-review claims"
+            f"{result.manual_claims} analyst-routed claims"
         ),
+    )
+    current_job_fingerprint = (
+        verification_job_fingerprint(result.job_path)
+        if result.job_path
+        else None
+    )
+    workspace = _invalidate_after_verification_job_change(
+        manager,
+        workspace,
+        previous_fingerprint=previous_job_fingerprint,
+        current_fingerprint=current_job_fingerprint,
+        print_fn=print_fn,
     )
     links = insert_verification_links(
         verification_page=result.page_path,
         research_directory=workspace.vault_entity_directory,
     )
+    restored_dune = restore_dune_dialogue_links(workspace)
     workspace = manager.update_stage(
         workspace,
         "obsidian_links",
@@ -1506,6 +2280,9 @@ def _verification_plan(
     else:
         print_fn("Collector job: none; material checks require manual review")
     print_fn(f"Import report: {result.report_path}")
+    print_fn(f"Verification catalog: {result.catalog_path}")
+    if restored_dune:
+        print_fn(f"Restored Dune dialogue links: {len(restored_dune)}")
     print_fn(
         f"Provider calls: {result.provider_calls}; "
         f"reused: {result.reused_calls}"
@@ -1523,6 +2300,10 @@ def _evaluate(
     workspace: ProjectWorkspace,
     print_fn: PrintFunction,
 ) -> int:
+    # A preceding guided collection step may have updated the manifest. Reload
+    # it before recording evaluation state so those newer stage results are not
+    # overwritten by the older in-memory workspace document.
+    workspace = manager.load_project(workspace.slug)
     settings = SettingsManager(manager.root).load()
     provider = create_provider(settings["llm"])
     result = generate_evaluation_proposals(
@@ -1536,12 +2317,14 @@ def _evaluate(
         "pending" if result.proposals else "partial",
         detail=(
             f"{len(result.proposals)} proposals; "
-            f"{len(result.unmatched_evidence)} unmatched evidence files"
+            f"{len(result.unmatched_evidence)} unmatched evidence files; "
+            f"{len(result.ignored_stale_evidence)} stale evidence files ignored"
         ),
     )
     print_fn(f"Evaluation proposals: {len(result.proposals)}")
     print_fn(f"Reused proposals: {result.reused}")
     print_fn(f"Unmatched evidence files: {len(result.unmatched_evidence)}")
+    print_fn(f"Stale evidence files ignored: {len(result.ignored_stale_evidence)}")
     if result.proposals:
         print_fn("Review them with: python main.py review " + workspace.slug)
         return 0
@@ -1568,7 +2351,7 @@ def _review(
         document = json.loads(path.read_text(encoding="utf-8"))
         documents.append(document)
         print_fn(
-            f"  {index}. {document['verification_id']} — "
+            f"  {index}. {document['verification_id']} - "
             f"{document['proposed_status']}"
         )
     selected = _required(input_fn, "Proposal number: ")
@@ -1682,26 +2465,321 @@ def _show_status(
     project: str | None,
     print_fn: PrintFunction,
 ) -> int:
+    application = DefinalyzerApplication(manager)
     if project:
-        workspace = manager.load_project(project)
-        print_fn(json.dumps(manager.status_document(workspace), indent=2))
+        snapshot = application.snapshot(project)
+        print_fn(json.dumps(snapshot.to_dict(), indent=2))
         return 0
 
-    projects = manager.list_projects()
+    projects = application.list_projects()
     if not projects:
         print_fn("No projects exist.")
         return 0
-    for workspace in projects:
-        stages = workspace.document["stages"]
-        complete = sum(
-            stage["status"] == "complete" for stage in stages.values()
-        )
+    for snapshot in projects:
+        workflow = snapshot.workflow
         print_fn(
-            f"{workspace.name} [{workspace.document['entity_type']}] — "
-            f"{complete}/{len(stages)} stages complete — verification: "
-            f"{workspace.document['verification_status']}"
+            f"{snapshot.name} [{snapshot.entity_type}] - "
+            f"{workflow['ready_stages']}/{workflow['required_stages']} "
+            "required stages ready - "
+            f"{workflow['next_action']}"
         )
     return 0
+
+
+def _workflow_status_document(workspace: ProjectWorkspace) -> dict[str, object]:
+    return workflow_status_document(
+        workspace,
+        prompts_root=PROJECT_ROOT / "prompts",
+    )
+
+
+def _invalidate_after_source_change(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    previous_fingerprint: str,
+    print_fn: PrintFunction,
+) -> ProjectWorkspace:
+    """Mark generated descendants stale when source semantics changed."""
+
+    if source_corpus_fingerprint(workspace) == previous_fingerprint:
+        return workspace
+    changed = False
+    for stage in (
+        "research",
+        "registry",
+        "verification_plan",
+        "evidence_collection",
+        "evidence_evaluation",
+        "obsidian_links",
+    ):
+        current_status = workspace.document["stages"][stage]["status"]
+        if current_status in {"not_started", "pending"}:
+            continue
+        workspace = manager.update_stage(
+            workspace,
+            stage,
+            "pending",
+            detail="Collected source inputs changed; regenerate this stage.",
+        )
+        changed = True
+    if changed:
+        verification_status = str(
+            workspace.document.get("verification_status", "not_requested")
+        )
+        if verification_status not in {"not_requested", "unsupported"}:
+            workspace = manager.set_verification_status(workspace, "pending")
+        print_fn(
+            "Collected source content changed. Existing generated files were "
+            "preserved and dependent stages were marked for regeneration."
+        )
+    return workspace
+
+
+def _invalidate_after_research_change(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+) -> ProjectWorkspace:
+    """Preserve derived artifacts but prevent reuse after research changes."""
+
+    changed = False
+    for stage in (
+        "registry",
+        "verification_plan",
+        "evidence_collection",
+        "evidence_evaluation",
+        "obsidian_links",
+    ):
+        if workspace.document["stages"][stage]["status"] in {
+            "not_started",
+            "pending",
+        }:
+            continue
+        workspace = manager.update_stage(
+            workspace,
+            stage,
+            "pending",
+            detail="Research inputs changed; regenerate this stage.",
+        )
+        changed = True
+    if changed and workspace.document.get("verification_status") not in {
+        "not_requested",
+        "unsupported",
+    }:
+        workspace = manager.set_verification_status(workspace, "pending")
+    return workspace
+
+
+def _invalidate_after_registry_change(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    previous_fingerprint: str | None,
+    print_fn: PrintFunction,
+) -> ProjectWorkspace:
+    """Mark verification descendants stale after a registry content change."""
+
+    registry_path = workspace.registry_directory / "registry.json"
+    if json_fingerprint(
+        registry_path,
+        ignored_keys=("generated_at",),
+    ) == previous_fingerprint:
+        return workspace
+    changed = False
+    for stage in (
+        "verification_plan",
+        "evidence_collection",
+        "evidence_evaluation",
+        "obsidian_links",
+    ):
+        if workspace.document["stages"][stage]["status"] in {
+            "not_started",
+            "pending",
+        }:
+            continue
+        workspace = manager.update_stage(
+            workspace,
+            stage,
+            "pending",
+            detail="Registry inputs changed; regenerate this stage.",
+        )
+        changed = True
+    if changed:
+        if workspace.document.get("verification_status") not in {
+            "not_requested",
+            "unsupported",
+        }:
+            workspace = manager.set_verification_status(workspace, "pending")
+        print_fn(
+            "Registry content changed. Existing verification files were "
+            "preserved and marked for regeneration."
+        )
+    return workspace
+
+
+def _invalidate_after_verification_job_change(
+    manager: WorkspaceManager,
+    workspace: ProjectWorkspace,
+    *,
+    previous_fingerprint: str | None,
+    current_fingerprint: str | None,
+    print_fn: PrintFunction,
+) -> ProjectWorkspace:
+    """Prevent old evidence from satisfying a revised verification plan."""
+
+    if current_fingerprint == previous_fingerprint:
+        return workspace
+    changed = False
+    for stage in ("evidence_collection", "evidence_evaluation"):
+        if workspace.document["stages"][stage]["status"] in {
+            "not_started",
+            "pending",
+        }:
+            continue
+        workspace = manager.update_stage(
+            workspace,
+            stage,
+            "pending",
+            detail="Verification requests changed; recollect this stage.",
+        )
+        changed = True
+    if changed:
+        print_fn(
+            "Verification requests changed. Existing evidence was preserved "
+            "but cannot satisfy the revised checklist."
+        )
+    return workspace
+
+
+def _menu_prerequisites_ready(
+    workspace: ProjectWorkspace,
+    *,
+    choice: str,
+    print_fn: PrintFunction,
+) -> bool:
+    """Compatibility wrapper mapping menu positions to workflow steps."""
+
+    steps = {
+        "4": "research_page",
+        "5": "registry",
+        "6": "verification_plan",
+        "7": "evidence_collection",
+        "8": "evidence_evaluation",
+        "9": "review",
+    }
+    if choice not in steps:
+        raise ValueError(f"Unknown workflow menu choice: {choice}")
+    return _workflow_prerequisites_ready(
+        workspace,
+        step=steps[choice],
+        print_fn=print_fn,
+    )
+
+
+def _workflow_prerequisites_ready(
+    workspace: ProjectWorkspace,
+    *,
+    step: str,
+    print_fn: PrintFunction,
+) -> bool:
+    """Enforce the same stage prerequisites for menu and CLI users."""
+
+    supported = {
+        "research_page",
+        "registry",
+        "verification_plan",
+        "evidence_collection",
+        "evidence_evaluation",
+        "review",
+    }
+    if step not in supported:
+        raise ValueError(f"Unknown workflow step: {step}")
+
+    bootstrap_legacy_research(
+        workspace,
+        prompts_root=PROJECT_ROOT / "prompts",
+    )
+    research_current = research_pages_current(
+        workspace,
+        prompts_root=PROJECT_ROOT / "prompts",
+    )
+    if step == "research_page" and not _collected_source_pages(workspace):
+        print_fn("Research-page generation needs collected documentation first.")
+        print_fn(
+            "Crawl documentation first (menu option 3 / `python main.py "
+            f"crawl {workspace.slug}`), or analyze the complete project."
+        )
+        return False
+    if step == "registry" and not research_current:
+        print_fn(
+            "Registry generation needs all current research pages first."
+        )
+        print_fn(
+            "Run Analyze Project (menu option 2 / `python main.py analyze "
+            f"{workspace.slug}`) to generate or refresh them."
+        )
+        return False
+    if step in {
+        "verification_plan",
+        "evidence_collection",
+        "evidence_evaluation",
+        "review",
+    }:
+        missing = []
+        if not research_current:
+            missing.append(
+                "complete current research pages (menu option 4 or option 2)"
+            )
+        registry_status = workspace.document["stages"]["registry"]["status"]
+        if (
+            not (workspace.registry_directory / "registry.json").exists()
+            or registry_status not in {"complete", "partial"}
+        ):
+            missing.append("registry and token data (option 5)")
+        if missing:
+            print_fn("This verification step cannot run yet.")
+            print_fn("Missing: " + "; ".join(missing) + ".")
+            print_fn(
+                "Run the listed menu steps, or `python main.py analyze "
+                f"{workspace.slug}` to complete the research steps in order."
+            )
+            return False
+    if step in {"evidence_collection", "evidence_evaluation", "review"}:
+        if (
+            workspace.document["stages"]["verification_plan"]["status"]
+            != "complete"
+            or not workspace.verification_page_path.exists()
+        ):
+            print_fn("This step needs a current verification checklist.")
+            print_fn(
+                "Run menu option 6 or `python main.py verification-plan "
+                f"{workspace.slug}` first."
+            )
+            return False
+    if step == "evidence_collection":
+        if not (workspace.jobs_directory / "verification-plan.json").exists():
+            print_fn(
+                "This checklist has no scanner-ready requests. Its claims "
+                "remain in the verification page for manual analyst review."
+            )
+            return False
+    if step == "evidence_evaluation":
+        if workspace.document["stages"]["evidence_collection"]["status"] not in {
+            "complete",
+            "partial",
+        }:
+            print_fn("No planned blockchain evidence is ready for assessment.")
+            print_fn("Run option 7 first.")
+            return False
+    if step == "review" and not pending_proposals(workspace):
+        print_fn("No pending evidence assessment proposals require approval.")
+        print_fn("Run option 8 after collecting evidence, if applicable.")
+        return False
+    return True
+
+
+def _verification_status_label(workspace: ProjectWorkspace) -> str:
+    return verification_status_label(workspace)
 
 
 def _print_created(
@@ -1729,10 +2807,25 @@ def _menu_crawl_pattern(
 
     if is_github_repository_url(docs_url):
         return DEFAULT_PATTERN
+    default_pattern = _default_crawl_pattern(docs_url)
     return (
-        input_fn(f"Sitemap pattern [{DEFAULT_PATTERN}]: ").strip()
-        or DEFAULT_PATTERN
+        input_fn(f"Sitemap pattern [{default_pattern}]: ").strip()
+        or default_pattern
     )
+
+
+def _default_crawl_pattern(docs_url: str) -> str:
+    """Scope subsection URLs while retaining broad discovery for site roots."""
+
+    parsed_path = urlparse(docs_url.strip()).path
+    path = parsed_path.rstrip("/")
+    if not path:
+        return DEFAULT_PATTERN
+    if not parsed_path.endswith("/"):
+        parent = path.rpartition("/")[0]
+        if parent:
+            path = parent
+    return f"*{path}/*"
 
 
 def _menu_github_ref(

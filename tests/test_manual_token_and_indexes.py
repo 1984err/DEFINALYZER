@@ -71,9 +71,84 @@ class ManualTokenAndIndexTests(unittest.TestCase):
 
         self.assertIn("[[Protocols/Example/Index\\|Example]]", research)
         self.assertIn("[[Tokens/EX/Index\\|EX]]", tokens)
-        self.assertIn("| Example | Ethereum |", tokens)
+        self.assertIn(
+            "| [[Protocols/Example/Index\\|Example]] | Ethereum |",
+            tokens,
+        )
         self.assertIn("[[Verification/Example/Index\\|Example]]", verification)
         self.assertIn("| 2 | 1 |", verification)
+
+    def test_chain_token_parent_and_research_readiness_are_truthful(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(
+                name="Example Chain",
+                entity_type="chain",
+            )
+            token_directory = workspace.vault_root / "Coins" / "EXC"
+            token_directory.mkdir(parents=True)
+            (token_directory / "Index.md").write_text(
+                '---\nentity: "EXC"\nentity_type: "coin"\n'
+                'parent_chain: "Example Chain"\n---\n\n'
+                "## Networks and Addresses\n\n"
+                "| Network | Standard | Address | Source |\n"
+                "|---|---|---|---|\n| Example Chain | Native | `-` | docs |\n",
+                encoding="utf-8",
+            )
+
+            paths = generate_vault_indexes(manager.root)
+            research = paths[1].read_text(encoding="utf-8")
+            coins = paths[4].read_text(encoding="utf-8")
+
+        self.assertIn("[[Chains/Example Chain/Index\\|Example Chain]]", research)
+        self.assertIn("| 0/3 |", research)
+        self.assertIn("Collect documentation or run Analyze Project.", research)
+        self.assertIn(
+            "[[Chains/Example Chain/Index\\|Example Chain]]",
+            coins,
+        )
+
+    def test_token_page_uses_chain_parent_and_escapes_table_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(
+                name="Example Chain",
+                entity_type="chain",
+            )
+            token = TokenRecord(
+                name="Example Coin",
+                symbol="EXC",
+                token_type="Native | governance\ncoin",
+                protocol_relationship="Native currency",
+                network="Example Chain",
+                standard="Native",
+                address="Not documented",
+                supply="Not documented",
+                maximum_supply="Not documented",
+                circulating_supply="Not documented",
+                emissions="Epoch | based",
+                allocation="Not documented",
+                unlocks="Not documented",
+                mint_authority="Not documented",
+                utility="Gas and governance",
+                source="Official docs | token page",
+            )
+
+            result = upsert_manual_token(workspace=workspace, token=token)
+            text = result.token_pages[0].read_text(encoding="utf-8")
+            page_path = result.token_pages[0]
+
+        self.assertIn(
+            "[[Chains/Example Chain/Index\\|Example Chain]]",
+            text,
+        )
+        self.assertIn("Native \\| governance coin", text)
+        self.assertIn("Epoch \\| based", text)
+        self.assertIn("Official docs \\| token page", text)
+        self.assertEqual(page_path.parent.parent.name, "Coins")
+        self.assertIn('entity_type: "coin"', text)
+        self.assertIn('parent_chain: "Example Chain"', text)
+        self.assertIn("| Chain relationship |", text)
 
 
 if __name__ == "__main__":

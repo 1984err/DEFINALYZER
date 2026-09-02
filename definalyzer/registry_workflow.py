@@ -26,14 +26,20 @@ AAVE_ADDRESS_BOOK_URL = (
     "aave-address-book/main/src/AaveV3Ethereum.sol"
 )
 AAVE_GRAPHQL_URL = "https://api.v3.aave.com/graphql"
-TOKEN_SCOPE = (
+PROTOCOL_TOKEN_SCOPE = (
     "Include only the protocol's native/governance token and tokens issued by "
     "the protocol with their own material economics. Exclude reserve assets, "
     "collateral assets, external dependencies, generic reward assets, aTokens, "
     "debt tokens, vault shares, wrappers, receipt tokens, LP tokens, and "
     "assets created by protocol users."
 )
-TOKEN_DISCOVERY_VERSION = 2
+CHAIN_COIN_SCOPE = (
+    "Include only the chain's native coin used for gas, staking, consensus, or "
+    "native monetary economics. Exclude tokens merely deployed on the chain, "
+    "bridged assets, wrapped versions, application tokens, stablecoins, and "
+    "ecosystem reward assets. A native coin normally has no contract address."
+)
+TOKEN_DISCOVERY_VERSION = 3
 PLACEHOLDER_IDENTITIES = {
     "-",
     "n/a",
@@ -77,12 +83,25 @@ DOCUMENTED_CHAINS = {
     "solana": ("Solana", None),
 }
 AUTO_COLLECTOR_CHAINS = {"Arbitrum", "Base", "Ethereum"}
+NON_CHAIN_TABLE_HEADERS = {
+    "description",
+    "equation",
+    "example",
+    "formula",
+    "function",
+    "meaning",
+    "parameter",
+    "type",
+    "value",
+    "variable",
+}
 EVM_ADDRESS_PATTERN = re.compile(r"0x[a-fA-F0-9]{40}")
 SOLANA_ADDRESS_PATTERN = re.compile(
     r"(?<![1-9A-HJ-NP-Za-km-z])"
     r"[1-9A-HJ-NP-Za-km-z]{32,44}"
     r"(?![1-9A-HJ-NP-Za-km-z])"
 )
+TOKEN_SYMBOL_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,19}")
 
 
 @dataclass(frozen=True)
@@ -134,6 +153,14 @@ def project_tokens(workspace: ProjectWorkspace) -> tuple[TokenRecord, ...]:
     return _load_existing_tokens(workspace.registry_directory / "registry.json")
 
 
+def _asset_section(workspace: ProjectWorkspace) -> str:
+    return "Coins" if workspace.document["entity_type"] == "chain" else "Tokens"
+
+
+def _asset_scope(workspace: ProjectWorkspace) -> str:
+    return CHAIN_COIN_SCOPE if workspace.document["entity_type"] == "chain" else PROTOCOL_TOKEN_SCOPE
+
+
 def upsert_manual_token(
     *,
     workspace: ProjectWorkspace,
@@ -176,14 +203,12 @@ def upsert_manual_token(
         "token_discovery_version": TOKEN_DISCOVERY_VERSION,
         "token_discovery_status": "manual_entries",
         "source_coverage": ensure_source_coverage(workspace).status,
-        "scope": (
-            "Protocol-native/governance and protocol-issued economic tokens "
-            "only; external and reserve assets excluded."
-        ),
+        "scope": _asset_scope(workspace),
         "tokens": [asdict(row) for row in tokens],
         "addresses": [asdict(row) for row in addresses],
         "networks": existing_document.get("networks", []),
         "sources": existing_document.get("sources", []),
+        "source_catalog": _source_catalog(workspace),
     }
     _write_generated_json(registry_path, document)
     token_pages = tuple(
@@ -192,6 +217,7 @@ def upsert_manual_token(
     linked_pages = link_token_references(
         workspace.vault_entity_directory,
         tokens,
+        section=_asset_section(workspace),
     )
     address_page = (
         workspace.vault_entity_directory / "Registry.md"
@@ -218,7 +244,7 @@ def upsert_manual_token(
 
 
 def _validate_manual_token(token: TokenRecord) -> None:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,19}", token.symbol):
+    if not TOKEN_SYMBOL_PATTERN.fullmatch(token.symbol):
         raise ValueError(
             "Token symbol must be 1-20 letters, numbers, dots, underscores, "
             "or hyphens."
@@ -267,6 +293,7 @@ def run_registry_workflow(
                 provider=provider,
                 tokenomics=tokenomics.read_text(encoding="utf-8"),
                 working_directory=workspace.project_root,
+                entity_type=workspace.document["entity_type"],
             )
         )
     networks: list[dict[str, Any]] = []
@@ -310,14 +337,12 @@ def run_registry_workflow(
             else "incomplete_source_coverage"
         ),
         "source_coverage": ensure_source_coverage(workspace).status,
-        "scope": (
-            "Protocol-native/governance and protocol-issued economic tokens "
-            "only; external and reserve assets excluded."
-        ),
+        "scope": _asset_scope(workspace),
         "tokens": [asdict(token) for token in tokens],
         "addresses": [asdict(address) for address in addresses],
         "networks": networks,
         "sources": sources,
+        "source_catalog": _source_catalog(workspace),
     }
     _write_generated_json(registry_path, registry_document)
 
@@ -328,6 +353,7 @@ def run_registry_workflow(
     linked_pages = link_token_references(
         workspace.vault_entity_directory,
         tokens,
+        section=_asset_section(workspace),
     )
     _update_protocol_index(
         workspace,
@@ -351,14 +377,25 @@ def discover_native_tokens(
     provider: TextProvider,
     tokenomics: str,
     working_directory: Path,
+    entity_type: str = "protocol",
 ) -> tuple[TokenRecord, ...]:
+    is_chain = entity_type == "chain"
+    scope = CHAIN_COIN_SCOPE if is_chain else PROTOCOL_TOKEN_SCOPE
+    subject = "Chain-Native Coin" if is_chain else "Native and Protocol-Issued Token"
+    relationship = "chain-level monetary or consensus economics" if is_chain else "protocol-level economics"
     prompt = (
-        "# Native and Protocol-Issued Token Discovery\n\n"
-        f"{TOKEN_SCOPE}\n\n"
+        f"# {subject} Discovery\n\n"
+        f"{scope}\n\n"
         "Use only the supplied Tokenomics page. Do not use prior knowledge. "
         "A qualifying token must have a specifically documented name or "
-        "symbol and protocol-level economics. Tokens created by users of the "
-        "protocol do not qualify merely because the protocol creates them. "
+        f"symbol and {relationship}. "
+        + (
+            "Assets deployed on the chain do not qualify merely because the chain hosts them. "
+            "Use `Not applicable` for the address when the native coin has no contract. "
+            if is_chain else
+            "Tokens created by users of the protocol do not qualify merely because the protocol creates them. "
+        )
+        +
         "If the symbol is documented but no distinct formal name is given, "
         "use the symbol as the name; do not return an empty list solely "
         "because a separate long-form name is absent. "
@@ -404,10 +441,18 @@ def discover_native_tokens(
             or symbol.casefold() in PLACEHOLDER_IDENTITIES
         ):
             continue
+        if not TOKEN_SYMBOL_PATTERN.fullmatch(symbol):
+            raise ValueError(
+                "Discovered token symbol must be 1-20 letters, numbers, "
+                "dots, underscores, or hyphens."
+            )
         if symbol in seen:
             continue
         seen.add(symbol)
         values["symbol"] = symbol
+        # Provenance is fixed by the deterministic input boundary; a model
+        # cannot claim a source outside the Tokenomics page it received.
+        values["source"] = "Tokenomics.md"
         tokens.append(TokenRecord(**values))
     return tuple(tokens)
 
@@ -415,36 +460,49 @@ def discover_native_tokens(
 def link_token_references(
     protocol_directory: Path,
     tokens: list[TokenRecord] | tuple[TokenRecord, ...],
+    *,
+    section: str = "Tokens",
 ) -> tuple[Path, ...]:
     changed: list[Path] = []
     for path in sorted(protocol_directory.glob("*.md")):
         if path.name in {"Index.md", "Networks.md"}:
             continue
         text = path.read_text(encoding="utf-8")
-        lines = [_normalize_table_wikilinks(line) for line in text.splitlines()]
+        raw_lines = text.splitlines()
+        eligible = _token_linkable_lines(raw_lines)
+        lines = [
+            _normalize_table_wikilinks(line) if eligible[index] else line
+            for index, line in enumerate(raw_lines)
+        ]
         for token in tokens:
-            plain_link = f"[[Tokens/{token.symbol}/Index|{token.symbol}]]"
+            plain_link = f"[[{section}/{token.symbol}/Index|{token.symbol}]]"
             table_link = (
-                f"[[Tokens/{token.symbol}/Index\\|{token.symbol}]]"
+                f"[[{section}/{token.symbol}/Index\\|{token.symbol}]]"
             )
-            if any(plain_link in line or table_link in line for line in lines):
+            if any(
+                eligible[index]
+                and (plain_link in line or table_link in line)
+                for index, line in enumerate(lines)
+            ):
                 continue
             pattern = re.compile(
                 rf"(?<![/\w\[\]|]){re.escape(token.symbol)}"
                 rf"(?![/\w\[\]|])"
             )
             for index, line in enumerate(lines):
+                if not eligible[index]:
+                    continue
                 if not pattern.search(line):
                     continue
                 link = table_link if _is_markdown_table_row(line) else plain_link
                 lines[index] = pattern.sub(lambda _: link, line, count=1)
                 break
-        lines = _remove_empty_trailing_table_columns(lines)
+        lines = _remove_empty_trailing_table_columns(lines, eligible)
         updated = "\n".join(lines)
         if text.endswith("\n"):
             updated += "\n"
         if updated != text:
-            path.write_text(updated, encoding="utf-8", newline="\n")
+            _write_text_atomic(path, updated)
             changed.append(path)
     return tuple(changed)
 
@@ -723,9 +781,11 @@ def _extract_documented_addresses(
                         section=current_section,
                         source=f"{relative}#L{line_number}",
                     )
-                    if table_records:
-                        records.extend(table_records)
-                        continue
+                    records.extend(table_records)
+                    # A recognized table row must not fall through to the
+                    # looser prose parser when none of its columns represent
+                    # deployment addresses (for example, formula tables).
+                    continue
             elif line.strip():
                 table_headers = None
             evm_addresses = list(dict.fromkeys(EVM_ADDRESS_PATTERN.findall(line)))
@@ -755,8 +815,9 @@ def _extract_documented_addresses(
                 word in lowered
                 for word in ("address", "contract", "deployment", "proxy")
             )
+            inferred_chain = current_chain or _chain_from_explorer_link(line)
             contextual_link = linked_address and (
-                current_chain is not None or explicit
+                inferred_chain[0] != "Not documented" or explicit
             )
             if not table_row and not explicit and not contextual_link:
                 continue
@@ -765,7 +826,7 @@ def _extract_documented_addresses(
                 if linked_address and previous_label
                 else _documented_address_label(line)
             )
-            chain, chain_id = current_chain or ("Not documented", None)
+            chain, chain_id = inferred_chain
             resolved = (
                 chain in AUTO_COLLECTOR_CHAINS
                 and label != "DOCUMENTED_ADDRESS"
@@ -841,6 +902,8 @@ def _address_records_from_table_row(
                 continue
             chain = _chain_from_heading(header)
             if chain is None:
+                if header.strip().casefold() in NON_CHAIN_TABLE_HEADERS:
+                    continue
                 chain = (header.strip() or "Not documented", None)
             chain_name, chain_id = chain
             for address in addresses:
@@ -1078,8 +1141,19 @@ def _clear_previous_address_enrichment(
 def _is_token_deployment(label: str, token: TokenRecord) -> bool:
     normalized = re.sub(r"\s+", " ", label).strip().casefold()
     names = {token.name.casefold(), token.symbol.casefold()}
-    return normalized in names or any(
+    exact_match = normalized in names or any(
         normalized in {f"{name} (oft)", f"{name} (ntt)"}
+        for name in names
+    )
+    if exact_match:
+        return True
+    if "token address" not in normalized:
+        return False
+    return any(
+        re.search(
+            rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])",
+            normalized,
+        )
         for name in names
     )
 
@@ -1137,7 +1211,8 @@ def _write_token_page(
     token: TokenRecord,
     addresses: list[AddressRecord] | tuple[AddressRecord, ...] = (),
 ) -> Path:
-    directory = workspace.vault_root / "Tokens" / token.symbol
+    is_coin = workspace.document["entity_type"] == "chain"
+    directory = workspace.vault_root / _asset_section(workspace) / token.symbol
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "Index.md"
     deployments = [
@@ -1147,54 +1222,60 @@ def _write_token_page(
     ]
     if deployments:
         address_rows = "".join(
-            f"| {record.chain} | "
-            f"{_token_standard_from_label(record.name, token.standard, record.chain)} | "
-            f"`{record.address}` | {record.source} |\n"
+            f"| {_markdown_cell(record.chain)} | "
+            f"{_markdown_cell(_token_standard_from_label(record.name, token.standard, record.chain))} | "
+            f"`{record.address}` | "
+            f"{_render_source_reference(workspace, record.source)} |\n"
             for record in deployments
         )
     else:
         address_rows = (
-            f"| {token.network} | {token.standard} | "
-            f"`{token.address}` | {token.source} |\n"
+            f"| {_markdown_cell(token.network)} | "
+            f"{_markdown_cell(token.standard)} | "
+            f"`{_markdown_cell(token.address)}` | "
+            f"{_render_source_reference(workspace, token.source)} |\n"
         )
     market_snapshot = load_market_snapshot(workspace, token.symbol)
-    market_section = _render_market_snapshot(market_snapshot)
+    market_section = _render_market_snapshot(market_snapshot, is_coin=is_coin)
     text = (
         "---\n"
         'generated_by: "definalyzer_registry"\n'
         f'entity: "{token.symbol}"\n'
-        'entity_type: "token"\n'
-        f'parent_protocol: "{workspace.name}"\n'
+        f'entity_type: "{"coin" if is_coin else "token"}"\n'
+        f'{"parent_chain" if is_coin else "parent_protocol"}: "{workspace.name}"\n'
         f'verification_status: "{workspace.document["verification_status"]}"\n'
         f'generated_at: "{_timestamp()}"\n'
         "---\n\n"
-        f"# {token.symbol}\n\n"
+        f"# {_markdown_text(token.symbol)}\n\n"
         "## Identity\n\n"
         "| Field | Value |\n|---|---|\n"
-        f"| Name | {token.name} |\n"
-        f"| Symbol | {token.symbol} |\n"
-        f"| Type | {token.token_type} |\n"
-        f"| Protocol relationship | {token.protocol_relationship} |\n"
-        f"| Parent protocol | [[Protocols/{workspace.name}/Index\\|"
-        f"{workspace.name}]] |\n\n"
+        f"| Name | {_markdown_cell(token.name)} |\n"
+        f"| Symbol | {_markdown_cell(token.symbol)} |\n"
+        f"| Type | {_markdown_cell(token.token_type)} |\n"
+        f"| {'Chain relationship' if is_coin else 'Protocol relationship'} | {_markdown_cell(token.protocol_relationship)} |\n"
+        f"| Parent project | [[{_entity_folder(workspace)}/{workspace.name}/Index\\|"
+        f"{_markdown_cell(workspace.name)}]] |\n\n"
         "## Networks and Addresses\n\n"
         "| Network | Standard | Address | Source |\n|---|---|---|---|\n"
         f"{address_rows}\n"
-        "## Documented Token Mechanics\n\n"
+        f"## Documented {'Coin' if is_coin else 'Token'} Mechanics\n\n"
         "| Field | Value |\n|---|---|\n"
-        f"| Mint authority | {token.mint_authority} |\n"
-        f"| Allocation | {token.allocation} |\n"
-        f"| Emissions | {token.emissions} |\n"
-        f"| Unlocks or vesting | {token.unlocks} |\n\n"
+        f"| Mint authority | {_markdown_cell(token.mint_authority)} |\n"
+        f"| Allocation | {_markdown_cell(token.allocation)} |\n"
+        f"| Emissions | {_markdown_cell(token.emissions)} |\n"
+        f"| Unlocks or vesting | {_markdown_cell(token.unlocks)} |\n\n"
         f"{market_section}"
         "## Utility\n\n"
-        f"- {token.utility}\n\n"
+        f"- {_markdown_text(token.utility)}\n\n"
         "## Data Status\n\n"
-        "- Address provenance is registry data, not verification.\n"
-        "- `Not documented` fields remain open for official-source or "
-        "onchain enrichment.\n"
+        + (
+            "- A native coin does not require a contract address.\n"
+            if is_coin else
+            "- Address provenance is registry data, not verification.\n"
+        )
+        + "- `Not documented` fields remain open for official-source or onchain enrichment.\n"
     )
-    _write_generated_markdown(path, text, legacy_markers=("parent_protocol:",))
+    _write_generated_markdown(path, text, legacy_markers=("parent_protocol:", "parent_chain:"))
     return path
 
 
@@ -1218,7 +1299,12 @@ def refresh_token_pages_from_registry(
     )
 
 
-def _render_market_snapshot(snapshot: MarketSnapshot | None) -> str:
+def _render_market_snapshot(
+    snapshot: MarketSnapshot | None,
+    *,
+    is_coin: bool = False,
+) -> str:
+    asset_label = "coin" if is_coin else "token"
     if snapshot is None:
         return (
             "## Current Supply Data — CoinGecko\n\n"
@@ -1228,7 +1314,7 @@ def _render_market_snapshot(snapshot: MarketSnapshot | None) -> str:
             "| Total supply | Not collected |\n"
             "| Maximum supply | Not collected |\n"
             "| Updated | Never |\n\n"
-            "Run **Refresh current token supply data** to request these "
+            f"Run **Refresh current {asset_label} supply data** to request these "
             "fields from CoinGecko. This section is never filled by AI.\n\n"
         )
     if snapshot.status != "available":
@@ -1237,7 +1323,7 @@ def _render_market_snapshot(snapshot: MarketSnapshot | None) -> str:
             "## Current Supply Data — CoinGecko\n\n"
             f"- Status: Unavailable — {detail}\n"
             f"- Attempted: {snapshot.collected_at}\n"
-            "- Run **Refresh current token supply data** to retry.\n"
+            f"- Run **Refresh current {asset_label} supply data** to retry.\n"
             "- This section is never filled by AI.\n\n"
         )
 
@@ -1250,6 +1336,11 @@ def _render_market_snapshot(snapshot: MarketSnapshot | None) -> str:
         return f"${display(value)}" if value is not None else "Not available"
 
     source = snapshot.source_url or "Not available"
+    identity_row = (
+        f"| CoinGecko identity | {snapshot.matched_name} ({snapshot.matched_symbol}) |\n"
+        if is_coin else
+        f"| Exact address match | {snapshot.network}: `{snapshot.contract_address}` |\n"
+    )
     return (
         "## Current Supply Data — CoinGecko\n\n"
         "| Field | Value |\n|---|---|\n"
@@ -1258,12 +1349,11 @@ def _render_market_snapshot(snapshot: MarketSnapshot | None) -> str:
         f"| Circulating supply | {display(snapshot.circulating_supply)} |\n"
         f"| Total supply | {display(snapshot.total_supply)} |\n"
         f"| Maximum supply | {display(snapshot.max_supply)} |\n"
-        f"| Exact address match | {snapshot.network}: "
-        f"`{snapshot.contract_address}` |\n"
+        f"{identity_row}"
         f"| Updated | {snapshot.provider_updated_at or snapshot.collected_at} |\n"
         f"| Source | [CoinGecko]({source}) |\n\n"
         "> Deterministic third-party supply data. This section is never "
-        "filled by AI and does not overwrite documented token mechanics.\n\n"
+        f"filled by AI and does not overwrite documented {asset_label} mechanics.\n\n"
     )
 
 
@@ -1317,9 +1407,13 @@ def _write_address_page(
 ) -> Path:
     path = workspace.vault_entity_directory / "Registry.md"
     rows = "\n".join(
-        f"| {record.name} | {record.component_type} | {record.role} | "
-        f"`{record.address}` | {record.chain} | {record.provenance} | "
-        f"{record.status} | {record.source} |"
+        f"| {_markdown_cell(record.name)} | "
+        f"{_markdown_cell(record.component_type)} | "
+        f"{_markdown_cell(record.role)} | "
+        f"`{record.address}` | {_markdown_cell(record.chain)} | "
+        f"{_markdown_cell(record.provenance)} | "
+        f"{_markdown_cell(record.status)} | "
+        f"{_render_source_reference(workspace, record.source)} |"
         for record in addresses
     )
     text = (
@@ -1355,16 +1449,18 @@ def _update_protocol_index(
     path = workspace.vault_entity_directory / "Index.md"
     text = path.read_text(encoding="utf-8")
     entries = []
+    entity_folder = _entity_folder(workspace)
     if network_page:
-        entries.append(f"[[Protocols/{workspace.name}/Networks|Networks]]")
+        entries.append(f"[[{entity_folder}/{workspace.name}/Networks|Networks]]")
     if address_page:
         entries.append(
-            f"[[Protocols/{workspace.name}/Registry|Contract Registry]]"
+            f"[[{entity_folder}/{workspace.name}/Registry|Contract Registry]]"
         )
-    entries.extend(f"[[Tokens/{token.symbol}/Index|{token.symbol}]]" for token in tokens)
+    asset_section = _asset_section(workspace)
+    entries.extend(f"[[{asset_section}/{token.symbol}/Index|{token.symbol}]]" for token in tokens)
     valid_symbols = {token.symbol.casefold() for token in tokens}
     updated = re.sub(
-        r"(?m)^- \[\[Tokens/([^/\]]+)/Index\|[^\]]+\]\]\n?",
+        rf"(?m)^- \[\[{asset_section}/([^/\]]+)/Index\|[^\]]+\]\]\n?",
         lambda match: (
             match.group(0)
             if match.group(1).casefold() in valid_symbols
@@ -1384,7 +1480,137 @@ def _update_protocol_index(
         if entry not in updated:
             updated = updated.rstrip() + f"\n- {entry}\n"
     if updated != text:
-        path.write_text(updated, encoding="utf-8", newline="\n")
+        _write_text_atomic(path, updated)
+
+
+def _source_catalog(workspace: ProjectWorkspace) -> list[dict[str, str | None]]:
+    """Record exact selected inputs without making research notes verbose."""
+
+    catalog: list[dict[str, str | None]] = []
+    for path in research_source_files(workspace.sources_directory):
+        catalog.append(
+            {
+                "path": path.relative_to(
+                    workspace.sources_directory
+                ).as_posix(),
+                "source_url": _official_source_url(path),
+                "sha256": _file_digest(path),
+            }
+        )
+    return catalog
+
+
+def _official_source_url(path: Path) -> str | None:
+    try:
+        head = "\n".join(
+            path.read_text(encoding="utf-8").splitlines()[:30]
+        )
+    except OSError:
+        return None
+    github = re.search(
+        r"<!--\s*definalyzer-source:\s*(https?://[^\s>]+)\s*-->",
+        head,
+        re.IGNORECASE,
+    )
+    if github:
+        return github.group(1)
+    frontmatter = re.search(
+        r"(?mi)^source:\s*[\"']?(https?://[^\s\"']+)[\"']?\s*$",
+        head,
+    )
+    return frontmatter.group(1) if frontmatter else None
+
+
+def _render_source_reference(
+    workspace: ProjectWorkspace,
+    source: str,
+) -> str:
+    rendered = [
+        _render_one_source_reference(workspace, part.strip())
+        for part in source.split(";")
+        if part.strip()
+    ]
+    return _markdown_cell("; ".join(rendered) or "Not documented")
+
+
+def _render_one_source_reference(
+    workspace: ProjectWorkspace,
+    source: str,
+) -> str:
+    if source.casefold() == "tokenomics.md":
+        return (
+            f"[[{_entity_folder(workspace)}/{workspace.name}/Tokenomics"
+            "|Tokenomics]]"
+        )
+    if re.fullmatch(r"https?://\S+", source):
+        return f"[Official source]({source})"
+
+    match = re.fullmatch(r"(?P<path>.+?)(?P<line>#L\d+)?", source)
+    if match is None:
+        return _markdown_text(source)
+    relative = match.group("path").replace("\\", "/")
+    line = match.group("line") or ""
+    candidate = (workspace.sources_directory / relative).resolve()
+    try:
+        candidate.relative_to(workspace.sources_directory.resolve())
+    except ValueError:
+        return _markdown_text(source)
+    if not candidate.is_file():
+        return _markdown_text(source)
+    official = _official_source_url(candidate)
+    if not official:
+        return _markdown_text(source)
+    if line and "github.com/" in official and "#" not in official:
+        official += line
+    label = _markdown_label(f"{relative}{line}")
+    return f"[{label}]({official})"
+
+
+def _entity_folder(workspace: ProjectWorkspace) -> str:
+    return {
+        "protocol": "Protocols",
+        "chain": "Chains",
+        "token": "Tokens",
+    }[str(workspace.document["entity_type"])]
+
+
+def _markdown_text(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def _markdown_cell(value: str) -> str:
+    return _markdown_text(value).replace("|", "\\|")
+
+
+def _markdown_label(value: str) -> str:
+    return _markdown_text(value).replace("[", "(").replace("]", ")")
+
+
+def _token_linkable_lines(lines: list[str]) -> list[bool]:
+    eligible: list[bool] = []
+    in_frontmatter = bool(lines and lines[0].strip() == "---")
+    in_fence = False
+    in_comment = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if in_frontmatter:
+            eligible.append(False)
+            if index and stripped == "---":
+                in_frontmatter = False
+            continue
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            eligible.append(False)
+            continue
+        if "<!--" in line:
+            in_comment = True
+        linkable = not in_fence and not in_comment and not re.match(
+            r"^#{1,6}\s+", stripped
+        )
+        eligible.append(bool(linkable))
+        if "-->" in line:
+            in_comment = False
+    return eligible
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:
@@ -1420,15 +1646,23 @@ def _normalize_table_wikilinks(line: str) -> str:
     )
 
 
-def _remove_empty_trailing_table_columns(lines: list[str]) -> list[str]:
+def _remove_empty_trailing_table_columns(
+    lines: list[str],
+    eligible: list[bool] | None = None,
+) -> list[str]:
     repaired = list(lines)
+    allowed = eligible or [True] * len(repaired)
     index = 0
     while index < len(repaired):
-        if not _is_markdown_table_row(repaired[index]):
+        if not allowed[index] or not _is_markdown_table_row(repaired[index]):
             index += 1
             continue
         end = index
-        while end < len(repaired) and _is_markdown_table_row(repaired[end]):
+        while (
+            end < len(repaired)
+            and allowed[end]
+            and _is_markdown_table_row(repaired[end])
+        ):
             end += 1
         rows = [_split_table_row(line) for line in repaired[index:end]]
         content_rows = [
@@ -1551,7 +1785,7 @@ def _remove_stale_token_pages(
     tokens: list[TokenRecord] | tuple[TokenRecord, ...],
 ) -> None:
     current_symbols = {token.symbol.casefold() for token in tokens}
-    tokens_root = workspace.vault_root / "Tokens"
+    tokens_root = workspace.vault_root / _asset_section(workspace)
     if not tokens_root.exists():
         return
     for page in tokens_root.glob("*/Index.md"):
@@ -1561,7 +1795,8 @@ def _remove_stale_token_pages(
             continue
         if 'generated_by: "definalyzer_registry"' not in text:
             continue
-        if f'parent_protocol: "{workspace.name}"' not in text:
+        parent_key = "parent_chain" if workspace.document["entity_type"] == "chain" else "parent_protocol"
+        if f'{parent_key}: "{workspace.name}"' not in text:
             continue
         if page.parent.name.casefold() in current_symbols:
             continue
@@ -1595,6 +1830,12 @@ def _write_generated_markdown(
             raise FileExistsError(
                 f"Refusing to overwrite a user-owned page: {path}"
             )
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(text, encoding="utf-8", newline="\n")
+    temporary.replace(path)
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(text, encoding="utf-8", newline="\n")
     temporary.replace(path)

@@ -76,6 +76,13 @@ NON_RESEARCH_DIRECTORIES = {
     "brand-guidelines",
     "terms-of-service",
 }
+REFERENCE_CATALOG_DIRECTORIES = {
+    "endpoint-reference",
+    "fix-api",
+    "rpc-methods",
+    "subscription-reference",
+    "subscriptions",
+}
 NON_RESEARCH_DIRECTORY_PREFIXES = (
     "example",
     "guide",
@@ -96,6 +103,12 @@ NON_RESEARCH_FILENAMES = {
     "media-coverage.md",
     "privacy-policy.md",
 }
+NON_RESEARCH_FILENAME_KEYS = {
+    "legal",
+    "privacypolicy",
+    "termsofservice",
+    "termsofuse",
+}
 RESEARCH_DEVELOPER_DIRECTORIES = {
     "architecture",
     "audits",
@@ -114,6 +127,9 @@ class ExtractionResult:
     mode: str = "single"
     provider_calls: int = 1
     reused_calls: int = 0
+    excluded_source_files: int = 0
+    excluded_source_characters: int = 0
+    provider_input_characters: int = 0
 
 
 @dataclass(frozen=True)
@@ -132,6 +148,16 @@ class ExtractionPlan:
     initial_chunks: int
     mode: str
     minimum_provider_calls: int
+    excluded_source_files: int = 0
+    excluded_source_characters: int = 0
+
+
+@dataclass(frozen=True)
+class SourceSelection:
+    selected: tuple[Path, ...]
+    excluded: tuple[Path, ...]
+    selected_characters: int
+    excluded_characters: int
 
 
 @dataclass(frozen=True)
@@ -150,6 +176,22 @@ def plan_extraction(
 ) -> ExtractionPlan:
     if template_name not in TEMPLATE_FILES:
         raise ValueError(f"Unknown research template {template_name!r}.")
+    selection = source_selection(workspace.sources_directory)
+    if (
+        template_name == "tokenomics"
+        and ensure_source_coverage(workspace).categories["tokenomics"]
+        == "missing"
+    ):
+        return ExtractionPlan(
+            template=template_name,
+            source_files=len(selection.selected),
+            source_characters=selection.selected_characters,
+            initial_chunks=0,
+            mode="coverage-placeholder",
+            minimum_provider_calls=0,
+            excluded_source_files=len(selection.excluded),
+            excluded_source_characters=selection.excluded_characters,
+        )
 
     prompts = Path(prompts_root)
     master = (prompts / "master_prompt.md").read_text(encoding="utf-8")
@@ -179,6 +221,8 @@ def plan_extraction(
             initial_chunks=1,
             mode="single",
             minimum_provider_calls=1,
+            excluded_source_files=len(selection.excluded),
+            excluded_source_characters=selection.excluded_characters,
         )
 
     overhead = len(
@@ -198,6 +242,8 @@ def plan_extraction(
         initial_chunks=len(chunks),
         mode="chunked",
         minimum_provider_calls=len(chunks) + 1,
+        excluded_source_files=len(selection.excluded),
+        excluded_source_characters=selection.excluded_characters,
     )
 
 
@@ -354,7 +400,10 @@ def research_source_files(source_root: Path) -> tuple[Path, ...]:
         relative = path.relative_to(source_root)
         parts = {part.casefold() for part in relative.parts[:-1]}
         filename = relative.name.casefold()
+        filename_key = re.sub(r"[^a-z0-9]+", "", relative.stem.casefold())
         if parts & NON_RESEARCH_DIRECTORIES:
+            continue
+        if parts & REFERENCE_CATALOG_DIRECTORIES:
             continue
         if parts & NON_RESEARCH_TOOL_DIRECTORIES:
             continue
@@ -364,7 +413,10 @@ def research_source_files(source_root: Path) -> tuple[Path, ...]:
             for prefix in NON_RESEARCH_DIRECTORY_PREFIXES
         ):
             continue
-        if filename in NON_RESEARCH_FILENAMES:
+        if (
+            filename in NON_RESEARCH_FILENAMES
+            or filename_key in NON_RESEARCH_FILENAME_KEYS
+        ):
             continue
         selected.append(path)
     nondeveloper = [
@@ -380,6 +432,27 @@ def research_source_files(source_root: Path) -> tuple[Path, ...]:
             if _keep_developer_source(path, source_root)
         ]
     return tuple(selected)
+
+
+def source_selection(source_root: Path) -> SourceSelection:
+    """Describe what routine AI extraction uses while retaining every file."""
+
+    all_files = tuple(
+        path
+        for path in sorted(source_root.rglob("*"))
+        if path.is_file()
+        and path.suffix.casefold() in {".md", ".markdown"}
+        and path.name.casefold() != "_source_coverage.md"
+    )
+    selected = research_source_files(source_root)
+    selected_set = set(selected)
+    excluded = tuple(path for path in all_files if path not in selected_set)
+    return SourceSelection(
+        selected=selected,
+        excluded=excluded,
+        selected_characters=sum(path.stat().st_size for path in selected),
+        excluded_characters=sum(path.stat().st_size for path in excluded),
+    )
 
 
 # Kept as a private alias for existing internal callers.
@@ -473,7 +546,9 @@ def extract_research_page_chunked(
 
     provider_calls = 0
     reused_calls = 0
+    provider_input_characters = 0
     ledgers: list[_Ledger] = []
+    populated_categories: set[str] = set()
     report = progress or (lambda message: None)
     report(
         f"Shared research corpus: {len(chunks)} source batches; "
@@ -507,6 +582,7 @@ def extract_research_page_chunked(
                 prompt,
                 working_directory=workspace.project_root,
             )
+            provider_input_characters += len(prompt)
             ledger_text = _validate_shared_ledger(response.text)
             _replace_text(ledger_path, ledger_text.rstrip() + "\n")
             entry.update(
@@ -522,6 +598,7 @@ def extract_research_page_chunked(
                 f"[{chunk_number}/{len(chunks)}] Saved "
                 f"{chunk.identifier}"
             )
+        populated_categories.update(_populated_ledger_categories(ledger_text))
         category_text = _select_category_ledger(
             ledger_text,
             template_name=template_name,
@@ -542,13 +619,11 @@ def extract_research_page_chunked(
         "documentation. Consolidate them into the required page. "
         "Deduplicate facts and preserve source-file references only when "
         "the output template requests provenance.\n\n"
-        "Use the following coverage metadata to qualify all absence "
-        "claims. Missing coverage means a topic was not assessed; it does "
-        "not prove that a feature or asset does not exist.\n\n"
         + coverage_markdown(workspace)
         + "\n\n"
         + source_inventory_markdown(workspace)
         + "\n\n"
+        + _cross_category_context(populated_categories)
     )
     final_prompt_overhead = len(
         build_extraction_prompt(
@@ -557,7 +632,7 @@ def extract_research_page_chunked(
             source_bundle=final_source_prefix,
         )
     )
-    reduced, reduction_calls, reduction_reused = _reduce_ledgers(
+    reduced, reduction_calls, reduction_reused, reduction_input = _reduce_ledgers(
         ledgers=tuple(ledgers),
         provider=provider,
         working_directory=workspace.project_root,
@@ -570,6 +645,7 @@ def extract_research_page_chunked(
     )
     provider_calls += reduction_calls
     reused_calls += reduction_reused
+    provider_input_characters += reduction_input
 
     final_prompt = build_extraction_prompt(
         master_prompt=master,
@@ -581,6 +657,7 @@ def extract_research_page_chunked(
         final_prompt,
         working_directory=workspace.project_root,
     )
+    provider_input_characters += len(final_prompt)
     provider_calls += 1
     body = validate_extraction_output(
         response.text,
@@ -603,6 +680,7 @@ def extract_research_page_chunked(
     outputs[template_name] = str(output_path)
     state["outputs"] = outputs
     _write_json(state_path, state)
+    selection = source_selection(workspace.sources_directory)
     return ExtractionResult(
         template=template_name,
         output_path=output_path,
@@ -612,6 +690,9 @@ def extract_research_page_chunked(
         mode="chunked",
         provider_calls=provider_calls,
         reused_calls=reused_calls,
+        excluded_source_files=len(selection.excluded),
+        excluded_source_characters=selection.excluded_characters,
+        provider_input_characters=provider_input_characters,
     )
 
 
@@ -628,6 +709,19 @@ def extract_research_page(
 ) -> ExtractionResult:
     if mode not in {"auto", "single", "chunked"}:
         raise ValueError("Extraction mode must be auto, single, or chunked.")
+    if template_name not in TEMPLATE_FILES:
+        supported = ", ".join(sorted(TEMPLATE_FILES))
+        raise ValueError(
+            f"Unknown research template {template_name!r}. "
+            f"Supported templates: {supported}."
+        )
+    compact = _write_compact_missing_category(
+        workspace=workspace,
+        template_name=template_name,
+        refresh=refresh,
+    )
+    if compact is not None:
+        return compact
     if mode == "chunked":
         return extract_research_page_chunked(
             workspace=workspace,
@@ -638,13 +732,6 @@ def extract_research_page(
             progress=progress,
             refresh=refresh,
         )
-    if template_name not in TEMPLATE_FILES:
-        supported = ", ".join(sorted(TEMPLATE_FILES))
-        raise ValueError(
-            f"Unknown research template {template_name!r}. "
-            f"Supported templates: {supported}."
-        )
-
     prompts = Path(prompts_root)
     master = (prompts / "master_prompt.md").read_text(encoding="utf-8")
     template = (
@@ -724,6 +811,7 @@ def extract_research_page(
         refresh=refresh,
     )
 
+    selection = source_selection(workspace.sources_directory)
     return ExtractionResult(
         template=template_name,
         output_path=output_path,
@@ -732,6 +820,9 @@ def extract_research_page(
         source_characters=len(source_bundle),
         mode="single",
         provider_calls=1,
+        excluded_source_files=len(selection.excluded),
+        excluded_source_characters=selection.excluded_characters,
+        provider_input_characters=len(prompt),
     )
 
 
@@ -807,18 +898,19 @@ def _reduce_ledgers(
     maximum_prompt_characters: int,
     target_characters: int,
     progress: Callable[[str], None],
-) -> tuple[str, int, int]:
+) -> tuple[str, int, int, int]:
     if target_characters < 1_000:
         raise ValueError("Final extraction prompt leaves too little ledger room.")
 
     active = list(ledgers)
     provider_calls = 0
     reused_calls = 0
+    provider_input_characters = 0
 
     for round_number in range(1, 9):
         bundle = _join_ledgers(active)
         if len(bundle) <= target_characters:
-            return bundle, provider_calls, reused_calls
+            return bundle, provider_calls, reused_calls, provider_input_characters
 
         groups = _group_ledgers_for_reduction(
             active,
@@ -857,6 +949,7 @@ def _reduce_ledgers(
                     prompt,
                     working_directory=working_directory,
                 )
+                provider_input_characters += len(prompt)
                 text = _validate_ledger(response.text)
                 _replace_text(path, text.rstrip() + "\n")
                 provider_calls += 1
@@ -1097,6 +1190,13 @@ def normalize_markdown_spacing(text: str) -> str:
     return "\n".join(normalized).strip()
 
 
+def remove_redundant_facts_heading(text: str) -> str:
+    """Remove the visual-only Facts wrapper while retaining all subsections."""
+
+    lines = [line for line in text.splitlines() if line.strip() != "# Facts"]
+    return normalize_markdown_spacing("\n".join(lines))
+
+
 def _validate_shared_ledger(text: str) -> str:
     output = text.strip()
     if not output:
@@ -1119,7 +1219,7 @@ def _validate_shared_ledger(text: str) -> str:
         raise ValueError(
             "The provider wrapped the complete research ledger in a code fence."
         )
-    return output
+    return remove_redundant_facts_heading(output)
 
 
 def _select_category_ledger(text: str, *, template_name: str) -> str:
@@ -1139,6 +1239,34 @@ def _select_category_ledger(text: str, *, template_name: str) -> str:
     if not content:
         content = "- No relevant facts."
     return f"# Fact Ledger\n\n{content}"
+
+
+def _populated_ledger_categories(text: str) -> set[str]:
+    """Inventory sibling evidence without resending every category's facts."""
+    sections = re.finditer(
+        r"^## (?P<name>[^\n]+)\n(?P<body>.*?)(?=^## |\Z)",
+        text, re.MULTILINE | re.DOTALL,
+    )
+    return {
+        match.group("name").strip()
+        for match in sections
+        if match.group("name").strip() in RESEARCH_CATEGORIES
+        and re.sub(
+            r"(?mi)^\s*-?\s*No relevant facts\.?\s*$", "", match.group("body")
+        ).strip()
+    }
+
+
+def _cross_category_context(categories: set[str]) -> str:
+    pages = ", ".join(OUTPUT_FILES[name] for name in sorted(categories))
+    return (
+        "# Cross-Page Evidence Scope\n\n"
+        f"Categories with material: {pages or 'None'}.\n"
+        "These ledgers cover one category, not the whole corpus. Refer other "
+        "topics to their owning pages, not Material Unknowns; never fill a "
+        "field from the inventory alone. Scope gaps to this section's evidence. "
+        "Coverage metadata must not override supplied facts.\n\n"
+    )
 
 
 def _ensure_prompt_size(prompt: str, maximum: int) -> None:
@@ -1262,4 +1390,48 @@ def _research_document(
         + "\n\n"
         + coverage_markdown(workspace).rstrip()
         + "\n"
+    )
+
+
+def _write_compact_missing_category(
+    *,
+    workspace: ProjectWorkspace,
+    template_name: str,
+    refresh: bool,
+) -> ExtractionResult | None:
+    """Create a truthful no-AI placeholder only when omission is unambiguous."""
+
+    if template_name != "tokenomics":
+        return None
+    if ensure_source_coverage(workspace).categories["tokenomics"] != "missing":
+        return None
+    output_path = workspace.vault_entity_directory / OUTPUT_FILES[template_name]
+    body = (
+        "# Tokenomics\n\n"
+        "> No protocol-native token or tokenomics source was identified in "
+        "the collected official documentation. This is a coverage limitation, "
+        "not proof that no token exists.\n\n"
+        "## Analyst Follow-up\n\n"
+        "Add an official token or tokenomics source and refresh this page if "
+        "token economics are material to the analysis."
+    )
+    document = _research_document(workspace, "deterministic", body)
+    _write_research_output(
+        output_path,
+        document,
+        workspace=workspace,
+        refresh=refresh,
+    )
+    selection = source_selection(workspace.sources_directory)
+    return ExtractionResult(
+        template=template_name,
+        output_path=output_path,
+        provider="deterministic",
+        source_files=len(selection.selected),
+        source_characters=selection.selected_characters,
+        mode="coverage-placeholder",
+        provider_calls=0,
+        excluded_source_files=len(selection.excluded),
+        excluded_source_characters=selection.excluded_characters,
+        provider_input_characters=0,
     )

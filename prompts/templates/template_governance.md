@@ -5,8 +5,6 @@
 > Extract who can change the protocol, what they can change, and the constraints
 > on that authority. Avoid procedural detail that does not affect control.
 
-# Facts
-
 ## Governance Model
 
 | Field | Value |

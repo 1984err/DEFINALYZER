@@ -2,7 +2,7 @@
 
 Status: **complete and live-verified for the first-version scope**
 
-Last verification: **2026-07-28**
+Last verification: **2026-09-01**
 
 ## Included
 
@@ -28,7 +28,7 @@ Last verification: **2026-07-28**
 
 ## Verified
 
-- Full automated suite: 102 tests passing
+- Full repository automated suite: 242 tests passing
 - Python compilation check passing
 - Capability manifest parses as JSON
 - Ethereum WETH high-level token and contract snapshots collected live
@@ -36,6 +36,8 @@ Last verification: **2026-07-28**
   failed requests, and one recorded pinned block
 - Guided terminal flow created a job, raw evidence, and Markdown summary using
   live Ethereum data
+- Phase 5 Ethereum WETH smoke check collected three requests with zero partial
+  or failed results
 - Markdown verification request imported into a validated job and collected
   live Ethereum evidence with one complete request and no failures
 

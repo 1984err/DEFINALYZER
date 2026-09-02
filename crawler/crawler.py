@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import re
+import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,7 +51,15 @@ def normalize_domain(value: str) -> str:
 
     parsed = urlparse(value if "://" in value else f"https://{value}")
 
-    if not parsed.netloc:
+    hostname = parsed.hostname
+    if (
+        not parsed.netloc
+        or not hostname
+        or any(character.isspace() for character in parsed.netloc)
+        or "." not in hostname
+        or hostname.startswith(".")
+        or hostname.endswith(".")
+    ):
         raise ValueError(f"Invalid documentation URL: {value}")
 
     return parsed.netloc.lower()
@@ -248,6 +257,19 @@ async def crawl_page(
     raise RuntimeError(last_error)
 
 
+def write_text_atomic(path: Path, text: str) -> None:
+    """Publish a complete UTF-8 file or leave the prior target untouched."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8", newline="\n")
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 async def crawl_protocol(
     *,
     protocol_name: str,
@@ -338,8 +360,7 @@ async def crawl_protocol(
                     body=body,
                 )
 
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_text(document, encoding="utf-8")
+                write_text_atomic(destination, document)
 
                 saved += 1
                 print(f"  Saved: {destination}")
@@ -360,9 +381,9 @@ async def crawl_protocol(
     )
 
     report_path = output_dir / "crawl-report.json"
-    report_path.write_text(
+    write_text_atomic(
+        report_path,
         json.dumps(asdict(summary), indent=2),
-        encoding="utf-8",
     )
 
     print("\n========== Crawl Complete ==========")

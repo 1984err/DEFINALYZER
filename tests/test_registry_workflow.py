@@ -9,9 +9,12 @@ from definalyzer.source_coverage import (
     update_source_status,
 )
 from definalyzer.registry_workflow import (
+    TokenRecord,
+    _enrich_tokens_from_documented_addresses,
     _extract_documented_addresses,
     _extract_token_catalog_addresses,
     discover_native_tokens,
+    link_token_references,
     run_registry_workflow,
 )
 from definalyzer.workspace import WorkspaceManager
@@ -83,7 +86,95 @@ class PlaceholderTokenProvider:
         )
 
 
+class UnsafeTokenProvider(FakeTokenProvider):
+    def generate(self, prompt, *, working_directory):
+        document = json.loads(
+            super().generate(prompt, working_directory=working_directory).text
+        )
+        document["tokens"][0]["symbol"] = "../AAVE"
+        document["tokens"][0]["source"] = "https://invented.example/source"
+        return ProviderResponse(
+            text=json.dumps(document),
+            provider="fake",
+            command=("fake",),
+        )
+
+
 class RegistryWorkflowTests(unittest.TestCase):
+    def test_chain_discovery_requests_only_native_coin_and_allows_no_address(self):
+        class ChainCoinProvider:
+            name = "fake"
+
+            def __init__(self):
+                self.prompt = ""
+
+            def generate(self, prompt, *, working_directory):
+                self.prompt = prompt
+                row = {
+                    "name": "Example Coin",
+                    "symbol": "EXC",
+                    "token_type": "Native coin",
+                    "protocol_relationship": "Gas and staking",
+                    "network": "Example Chain",
+                    "standard": "Native",
+                    "address": "Not applicable",
+                    "supply": "Not documented",
+                    "maximum_supply": "Not documented",
+                    "circulating_supply": "Not documented",
+                    "emissions": "Epoch issuance",
+                    "allocation": "Not documented",
+                    "unlocks": "Not documented",
+                    "mint_authority": "Protocol rules",
+                    "utility": "Gas and staking",
+                    "source": "ignored",
+                }
+                return ProviderResponse(text=json.dumps({"tokens": [row]}), provider="fake", command=("fake",))
+
+        provider = ChainCoinProvider()
+        coins = discover_native_tokens(
+            provider=provider,
+            tokenomics="# Tokenomics\n\nEXC is the native coin.",
+            working_directory=Path("."),
+            entity_type="chain",
+        )
+
+        self.assertEqual(coins[0].address, "Not applicable")
+        self.assertIn("chain's native coin", provider.prompt)
+        self.assertIn("no contract address", provider.prompt)
+
+    def test_rejects_unsafe_ai_token_symbol(self):
+        with self.assertRaisesRegex(ValueError, "token symbol"):
+            discover_native_tokens(
+                provider=UnsafeTokenProvider(),
+                tokenomics="# Tokenomics\n\nAAVE is documented.",
+                working_directory=Path("."),
+            )
+
+    def test_ai_cannot_override_deterministic_token_source(self):
+        provider = FakeTokenProvider()
+        response = json.loads(
+            provider.generate("", working_directory=Path(".")).text
+        )
+        response["tokens"][0]["source"] = "https://invented.example/source"
+
+        class AlteredSourceProvider:
+            name = "fake"
+
+            def generate(self, prompt, *, working_directory):
+                return ProviderResponse(
+                    text=json.dumps(response),
+                    provider="fake",
+                    command=("fake",),
+                )
+
+        tokens = discover_native_tokens(
+            provider=AlteredSourceProvider(),
+            tokenomics="# Tokenomics\n\nAAVE is documented.",
+            working_directory=Path("."),
+        )
+
+        self.assertEqual(tokens[0].source, "Tokenomics.md")
+
     def test_rejects_placeholder_token_identity_and_requests_empty_list(self):
         provider = PlaceholderTokenProvider()
 
@@ -225,6 +316,60 @@ class RegistryWorkflowTests(unittest.TestCase):
         self.assertEqual(ethereum_bridge.name, "Example Vault Bridge")
         self.assertEqual(derive_token.chain_id, 957)
         self.assertEqual(derive_token.status, "documented_unresolved")
+
+    def test_ignores_addresses_embedded_in_formula_description_columns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "math.md").write_text(
+                "| Name | Description | Formula |\n"
+                "|---|---|---|\n"
+                "| Market | 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | x + y |\n",
+                encoding="utf-8",
+            )
+
+            records = _extract_documented_addresses(root)
+
+        self.assertEqual(records, ())
+
+    def test_documented_token_address_uses_explorer_chain_and_enriches_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "bridge.md").write_text(
+                "2. Input PENDLE token address if it isn't listed\n"
+                "[0x808507121B80c02388fAd14726482e061B8da827]"
+                "(https://etherscan.io/address/"
+                "0x808507121B80c02388fAd14726482e061B8da827)\n",
+                encoding="utf-8",
+            )
+            records = _extract_documented_addresses(root)
+            token = TokenRecord(
+                name="PENDLE",
+                symbol="PENDLE",
+                token_type="Native protocol token",
+                protocol_relationship="Governance",
+                network="Not documented",
+                standard="Not documented",
+                address="Not documented",
+                supply="Not documented",
+                maximum_supply="Not documented",
+                circulating_supply="Not documented",
+                emissions="Not documented",
+                allocation="Not documented",
+                unlocks="Not documented",
+                mint_authority="Not documented",
+                utility="Governance",
+                source="Tokenomics.md",
+            )
+
+            enriched = _enrich_tokens_from_documented_addresses([token], list(records))
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].chain, "Ethereum")
+        self.assertEqual(enriched[0].network, "Ethereum")
+        self.assertEqual(
+            enriched[0].address,
+            "0x808507121B80c02388fAd14726482e061B8da827",
+        )
 
     def test_parses_network_columns_and_excludes_testnet_catalog(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -411,6 +556,111 @@ class RegistryWorkflowTests(unittest.TestCase):
             )
         )
         self.assertTrue(address_page_exists)
+
+    def test_registry_catalog_hashes_sources_and_links_official_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(name="Example")
+            (workspace.vault_entity_directory / "Tokenomics.md").write_text(
+                "# Tokenomics\n\nAAVE is the governance token.",
+                encoding="utf-8",
+            )
+            source = workspace.sources_directory / "contracts.md"
+            source.write_text(
+                '---\nsource: "https://docs.example.test/contracts"\n---\n\n'
+                "## Ethereum\n\n"
+                "| Component | Contract address |\n"
+                "|---|---|\n"
+                "| Treasury | 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |\n",
+                encoding="utf-8",
+            )
+
+            result = run_registry_workflow(
+                workspace=workspace,
+                provider=FakeTokenProvider(),
+            )
+            document = json.loads(result.registry_path.read_text(encoding="utf-8"))
+            registry_page = result.address_page.read_text(encoding="utf-8")
+
+        catalog = document["source_catalog"]
+        self.assertEqual(catalog[0]["path"], "contracts.md")
+        self.assertEqual(
+            catalog[0]["source_url"],
+            "https://docs.example.test/contracts",
+        )
+        self.assertRegex(catalog[0]["sha256"], r"^[a-f0-9]{64}$")
+        self.assertIn(
+            "[contracts.md#L9](https://docs.example.test/contracts)",
+            registry_page,
+        )
+
+    def test_github_source_provenance_keeps_exact_line_anchor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(name="GitHub Example")
+            (workspace.vault_entity_directory / "Tokenomics.md").write_text(
+                "# Tokenomics\n\nAAVE is the governance token.",
+                encoding="utf-8",
+            )
+            source = workspace.sources_directory / "contracts.md"
+            source.write_text(
+                "<!-- definalyzer-source: "
+                "https://github.com/example/docs/blob/abc/contracts.md -->\n\n"
+                "## Ethereum\n\n"
+                "| Component | Contract address |\n"
+                "|---|---|\n"
+                "| Treasury | 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |\n",
+                encoding="utf-8",
+            )
+
+            result = run_registry_workflow(
+                workspace=workspace,
+                provider=FakeTokenProvider(),
+            )
+            registry_page = result.address_page.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "(https://github.com/example/docs/blob/abc/contracts.md#L7)",
+            registry_page,
+        )
+
+    def test_token_linking_skips_frontmatter_headings_and_code_fences(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            page = root / "Overview.md"
+            page.write_text(
+                '---\ntitle: "AAVE reference"\n---\n\n'
+                "# AAVE Overview\n\n"
+                "```solidity\ncontract AAVE {}\n```\n\n"
+                "AAVE controls governance.\n",
+                encoding="utf-8",
+            )
+            token = TokenRecord(
+                name="Aave",
+                symbol="AAVE",
+                token_type="Governance",
+                protocol_relationship="Native",
+                network="Ethereum",
+                standard="ERC-20",
+                address="Not documented",
+                supply="Not documented",
+                maximum_supply="Not documented",
+                circulating_supply="Not documented",
+                emissions="Not documented",
+                allocation="Not documented",
+                unlocks="Not documented",
+                mint_authority="Not documented",
+                utility="Governance",
+                source="Tokenomics.md",
+            )
+
+            link_token_references(root, [token])
+            text = page.read_text(encoding="utf-8")
+
+        self.assertIn('title: "AAVE reference"', text)
+        self.assertIn("# AAVE Overview", text)
+        self.assertIn("contract AAVE {}", text)
+        self.assertIn("[[Tokens/AAVE/Index|AAVE]] controls governance.", text)
 
 
 if __name__ == "__main__":

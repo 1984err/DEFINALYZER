@@ -5,8 +5,6 @@
 > Extract how fees and other value enter, move through, and leave the protocol.
 > Do not infer profitability, sustainability, or valuation.
 
-# Facts
-
 ## Revenue Model
 
 | Field | Value |

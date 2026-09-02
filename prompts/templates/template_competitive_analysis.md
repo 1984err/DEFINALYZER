@@ -5,8 +5,6 @@
 > Extract documented positioning and comparisons only. Do not perform external
 > market research or repeat unsupported marketing claims as facts.
 
-# Facts
-
 ## Positioning
 
 | Field | Value |

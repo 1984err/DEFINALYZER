@@ -9,6 +9,33 @@ from definalyzer.obsidian_links import (
 
 
 class ObsidianLinkTests(unittest.TestCase):
+    def test_removed_claim_clears_old_generated_link_but_keeps_analyst_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            research = root / "research"
+            research.mkdir()
+            note = research / "Security.md"
+            note.write_text(
+                "# Security\n\nVerification: [[Verification/Example/Index#^vr-1|VR-1]]\n\n"
+                "Analyst note: investigate permissions.\n",
+                encoding="utf-8",
+            )
+            verification = root / "Verification" / "Example" / "Index.md"
+            verification.parent.mkdir(parents=True)
+            verification.write_text(
+                "## Research Link Map\n\n"
+                "| Verification ID | Research Note | Claim Location | Obsidian Link |\n"
+                "|---|---|---|---|\n\n## Collector Requests\n",
+                encoding="utf-8",
+            )
+            result = insert_verification_links(
+                verification_page=verification, research_directory=research,
+            )
+            content = note.read_text(encoding="utf-8")
+        self.assertNotIn("VR-1", content)
+        self.assertIn("Analyst note: investigate permissions.", content)
+        self.assertEqual(result.inserted_links, 0)
+
     def test_strips_generated_line_with_multiple_link_separators(self):
         text = (
             "## Control\n\n"
@@ -100,6 +127,78 @@ class ObsidianLinkTests(unittest.TestCase):
 
         self.assertEqual(result.inserted_links, 0)
         self.assertEqual(len(result.unresolved_mappings), 1)
+
+    def test_maps_unique_table_phrase_to_its_enclosing_heading(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            research = root / "research"
+            research.mkdir()
+            tokenomics = research / "Tokenomics.md"
+            tokenomics.write_text(
+                "# Tokenomics\n\n"
+                "## Allocation and Vesting\n\n"
+                "| Group | Status |\n|---|---|\n"
+                "| Team and Investors | Fully vested |\n",
+                encoding="utf-8",
+            )
+            verification = root / "Verification.md"
+            verification.write_text(
+                "## Research Link Map\n\n"
+                "| Verification ID | Research Note | Claim Location | "
+                "Obsidian Link |\n"
+                "|---|---|---|---|\n"
+                "| VR-TOKEN-001 | [[Tokenomics]] | Team and Investors | "
+                "[[Verification#^vr-token-001\\|verification]] |\n\n"
+                "## Collector Requests\n",
+                encoding="utf-8",
+            )
+
+            result = insert_verification_links(
+                verification_page=verification,
+                research_directory=research,
+            )
+            text = tokenomics.read_text(encoding="utf-8")
+
+        self.assertEqual(result.inserted_links, 1)
+        self.assertEqual(result.unresolved_mappings, ())
+        self.assertIn("## Allocation and Vesting\n\nVerification:", text)
+
+    def test_accepts_chain_research_links_and_writes_idempotently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            research = root / "Chains" / "Example Chain"
+            research.mkdir(parents=True)
+            architecture = research / "Architecture.md"
+            architecture.write_text(
+                "# Architecture\n\n## Consensus\n\n| Fact | Value |\n|---|---|\n",
+                encoding="utf-8",
+            )
+            verification = root / "Verification" / "Example Chain" / "Index.md"
+            verification.parent.mkdir(parents=True)
+            verification.write_text(
+                "# Verification\n\n## Research Link Map\n\n"
+                "| Verification ID | Research Note | Claim Location | Obsidian Link |\n"
+                "|---|---|---|---|\n"
+                "| VR-ARC-001 | "
+                "[[Chains/Example Chain/Architecture\\|Architecture]] | "
+                "Consensus | [[Example Chain - Verification#^vr-arc-001\\|verification]] |\n\n"
+                "## Collector Requests\n",
+                encoding="utf-8",
+            )
+
+            first = insert_verification_links(
+                verification_page=verification,
+                research_directory=research,
+            )
+            second = insert_verification_links(
+                verification_page=verification,
+                research_directory=research,
+            )
+            text = architecture.read_text(encoding="utf-8")
+
+        self.assertEqual(first.unresolved_mappings, ())
+        self.assertEqual(second.unresolved_mappings, ())
+        self.assertEqual(text.count("VR-ARC-001"), 1)
 
 
 if __name__ == "__main__":

@@ -52,11 +52,19 @@ After the research pages and registry are complete, provide them to
 `templates/template_verification_page.md`. It creates:
 
 - one categorized verification page per protocol, chain, or token
+- separate claim type, evidence availability, recommended method, route, and status
 - an analyst route, short procedure, and likely source for every check
 - stable Obsidian block links for material claims
 - a link-insertion map
 - the strict machine-readable block accepted by the blockchain collector
 
 The verification planner is an analyst checklist with an optional automated
-evidence layer. It selects evidence requests but does not evaluate claims.
-Evidence evaluation and research-link insertion are later workflow steps.
+evidence layer. `Manual` describes a route, not a result. A private, legal, or
+undocumented claim is classified separately and is never treated as false just
+because public evidence is unavailable. The planner selects evidence requests
+but does not evaluate claims. Evidence evaluation and research-link insertion
+are later workflow steps.
+
+When a public on-chain history or aggregate check is marked `Dune candidate`,
+the application may offer its optional copy/paste query dialogue. This is not
+automatic Dune execution and does not make a verification decision.

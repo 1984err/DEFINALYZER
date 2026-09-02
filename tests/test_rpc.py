@@ -34,6 +34,13 @@ class SupportedChainTests(unittest.TestCase):
 
         self.assertEqual(client.chain.chain_id, 42161)
 
+    def test_missing_rpc_configuration_has_actionable_environment_name(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(
+                ValueError, "Missing RPC endpoint.*BASE_RPC_URL"
+            ):
+                JsonRpcClient.from_environment("Base")
+
 
 class JsonRpcClientTests(unittest.TestCase):
     @patch("blockchain_collector.rpc.urlopen")

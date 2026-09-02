@@ -13,6 +13,34 @@ from definalyzer.workspace import WorkspaceManager
 
 
 class SourceCoverageTests(unittest.TestCase):
+    def test_gas_economics_under_opaque_filename_credits_partial_fees(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = WorkspaceManager(Path(directory) / "output").create_project(
+                name="Example", docs_url="https://docs.example.test",
+            )
+            workspace.sources_directory.mkdir(parents=True, exist_ok=True)
+            (workspace.sources_directory / "execution.md").write_text(
+                "# Gas\n\nTransaction fees are burned; contract rebates apply.",
+                encoding="utf-8",
+            )
+            summary = ensure_source_coverage(workspace)
+            again = ensure_source_coverage(workspace)
+        self.assertEqual(summary.categories["fees_revenue"], "partial")
+        self.assertEqual(len(summary.sources), len(again.sources))
+
+    def test_incidental_fee_link_does_not_credit_category(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = WorkspaceManager(Path(directory) / "output").create_project(
+                name="Example", docs_url="https://docs.example.test",
+            )
+            workspace.sources_directory.mkdir(parents=True, exist_ok=True)
+            (workspace.sources_directory / "overview.md").write_text(
+                "# Overview\n\nSee [Gas fees](gas.md). Burns explained elsewhere.",
+                encoding="utf-8",
+            )
+            summary = ensure_source_coverage(workspace)
+        self.assertEqual(summary.categories["fees_revenue"], "missing")
+
     def test_primary_docs_register_as_technical_and_missing_stays_visible(self):
         with tempfile.TemporaryDirectory() as directory:
             manager = WorkspaceManager(Path(directory) / "output")
@@ -101,6 +129,25 @@ class SourceCoverageTests(unittest.TestCase):
             summary = ensure_source_coverage(workspace)
 
         self.assertEqual(summary.categories["tokenomics"], "missing")
+
+    def test_single_risk_page_only_credits_partial_governance_security(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = WorkspaceManager(Path(directory) / "output")
+            workspace = manager.create_project(
+                name="Example",
+                docs_url="https://docs.example.test",
+            )
+            workspace.sources_directory.mkdir(parents=True, exist_ok=True)
+            (workspace.sources_directory / "risk-controls.md").write_text(
+                "# Risk Controls\n\nOne operational safeguard.",
+                encoding="utf-8",
+            )
+
+            summary = ensure_source_coverage(workspace)
+
+        self.assertEqual(
+            summary.categories["governance_security"], "partial"
+        )
 
 
 if __name__ == "__main__":

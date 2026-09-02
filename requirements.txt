@@ -1,3 +1,7 @@
 # Documentation crawling. The blockchain collector and unified application
 # otherwise use the Python standard library.
 Crawl4AI==0.9.2
+# Security floors for crawler transitive dependencies (tested with Crawl4AI above).
+cryptography>=50.0.1
+h2>=4.4.1
+nltk>=3.10.3

@@ -1,6 +1,7 @@
-"""Deterministic third-party token supply snapshots.
+"""Deterministic third-party token and native-coin supply snapshots.
 
-Data is matched by exact contract or mint address and stored separately from
+Tokens are matched by exact contract or mint address. Addressless native coins
+use an unambiguous CoinGecko identity match. Snapshots remain separate from
 documented research facts and raw on-chain evidence.
 """
 
@@ -29,6 +30,7 @@ PLATFORM_IDS = {
     "solana": "solana",
 }
 NETWORK_PRIORITY = ("ethereum", "arbitrum", "arbitrum one", "base", "solana")
+MISSING_ADDRESS_VALUES = {"", "-", "n/a", "none", "not applicable", "not documented"}
 
 
 @dataclass(frozen=True)
@@ -71,7 +73,7 @@ def refresh_market_data(
     sleep: SleepFunction = time.sleep,
     now: datetime | None = None,
 ) -> MarketRefreshResult:
-    """Refresh address-matched CoinGecko snapshots for registered tokens."""
+    """Refresh conservative CoinGecko snapshots for registered assets."""
 
     registry_path = workspace.registry_directory / "registry.json"
     if not registry_path.exists():
@@ -100,16 +102,29 @@ def refresh_market_data(
         symbol = str(token.get("symbol") or "").strip()
         if not symbol:
             continue
+        network, address = _select_contract(token, addresses)
+        native_coin = workspace.document["entity_type"] == "chain" and not address
+        if native_coin:
+            documented_network = str(token.get("network") or "").strip()
+            network = (
+                documented_network
+                if documented_network.casefold() not in {"", "not documented"}
+                else workspace.name
+            )
+        if network and network.casefold() == "not documented":
+            network = None
         cache_path = market_snapshot_path(workspace, symbol)
         cached = _load_snapshot(cache_path)
-        if not force and cached and _is_fresh(cached, current):
+        if (
+            not force
+            and cached
+            and _is_fresh(cached, current)
+            and _snapshot_matches_contract(cached, network, address)
+        ):
             snapshots.append(cached)
             reused += 1
             continue
 
-        network, address = _select_contract(token, addresses)
-        if network and network.casefold() == "not documented":
-            network = None
         platform_id = PLATFORM_IDS.get(network.casefold()) if network else None
         discovery_detail = None
         if address and not platform_id:
@@ -132,7 +147,46 @@ def refresh_market_data(
             except (HTTPError, OSError, TimeoutError, ValueError) as exc:
                 discovery_detail = _safe_error(exc)
 
-        if not platform_id or not address:
+        native_coin_id = None
+        if native_coin:
+            try:
+                if not coin_list_loaded:
+                    coin_list = fetcher(
+                        f"{COINGECKO_BASE_URL}/coins/list?include_platform=true"
+                    )
+                    coin_list_loaded = True
+                native_coin_id = _match_native_coin_by_identity(
+                    coin_list,
+                    name=str(token.get("name") or ""),
+                    symbol=symbol,
+                )
+            except (HTTPError, OSError, TimeoutError, ValueError) as exc:
+                discovery_detail = _safe_error(exc)
+
+        if native_coin and native_coin_id:
+            source_url = f"{COINGECKO_BASE_URL}/coins/{quote(native_coin_id, safe='')}"
+            try:
+                document = fetcher(source_url)
+                snapshot = _snapshot_from_response(
+                    symbol=symbol,
+                    network=network,
+                    address=None,
+                    platform_id=None,
+                    source_url=source_url,
+                    document=document,
+                    collected_at=current,
+                )
+            except (HTTPError, OSError, TimeoutError, ValueError) as exc:
+                snapshot = _unavailable_snapshot(
+                    symbol=symbol,
+                    network=network,
+                    address=None,
+                    platform_id=None,
+                    collected_at=current,
+                    source_url=source_url,
+                    detail=_safe_error(exc),
+                )
+        elif not platform_id or not address:
             snapshot = _unavailable_snapshot(
                 symbol=symbol,
                 network=network,
@@ -141,8 +195,13 @@ def refresh_market_data(
                 collected_at=current,
                 detail=(
                     discovery_detail
-                    or "No documented contract or mint address was available "
-                    "for exact-address matching."
+                    or (
+                        "CoinGecko did not return one unique exact identity or "
+                        "native-symbol match for this coin."
+                        if native_coin else
+                        "No documented contract or mint address was available "
+                        "for exact-address matching."
+                    )
                 ),
             )
         else:
@@ -223,14 +282,13 @@ def _select_contract(
         address = str(row.get("address") or "").strip()
         if (
             network.casefold() in PLATFORM_IDS
-            and address
-            and address.casefold() != "not documented"
+            and address.casefold() not in MISSING_ADDRESS_VALUES
         ):
             candidates.append((network, address))
 
     token_network = str(token.get("network") or "").strip()
     token_address = str(token.get("address") or "").strip()
-    if token_address and token_address.casefold() != "not documented":
+    if token_address.casefold() not in MISSING_ADDRESS_VALUES:
         candidates.append((token_network, token_address))
 
     def priority(item: tuple[str, str]) -> tuple[int, str]:
@@ -279,12 +337,59 @@ def _match_platform_by_address(
     return platform_id, network.title()
 
 
+def _match_native_coin_by_identity(
+    document: Any,
+    *,
+    name: str,
+    symbol: str,
+) -> str | None:
+    """Return one unambiguous CoinGecko identity for an addressless coin."""
+
+    if not isinstance(document, list):
+        raise ValueError("CoinGecko coin list returned a non-list response.")
+    target_name = name.strip().casefold()
+    target_symbol = symbol.strip().casefold()
+    exact_matches = {
+        str(row["id"])
+        for row in document
+        if isinstance(row, dict)
+        and isinstance(row.get("id"), str)
+        and str(row.get("name") or "").strip().casefold() == target_name
+        and str(row.get("symbol") or "").strip().casefold() == target_symbol
+    }
+    if len(exact_matches) == 1:
+        return next(iter(exact_matches))
+    # Documentation may call ETH "Ether" while CoinGecko calls it
+    # "Ethereum". Fall back only when one addressless/native listing has the
+    # exact symbol; token contracts with the same symbol remain excluded.
+    native_symbol_matches = {
+        str(row["id"])
+        for row in document
+        if isinstance(row, dict)
+        and isinstance(row.get("id"), str)
+        and str(row.get("symbol") or "").strip().casefold() == target_symbol
+        and not any(
+            isinstance(address, str) and address.strip()
+            for address in (
+                row.get("platforms", {}).values()
+                if isinstance(row.get("platforms"), dict)
+                else ()
+            )
+        )
+    }
+    return (
+        next(iter(native_symbol_matches))
+        if len(native_symbol_matches) == 1
+        else None
+    )
+
+
 def _snapshot_from_response(
     *,
     symbol: str,
     network: str,
-    address: str,
-    platform_id: str,
+    address: str | None,
+    platform_id: str | None,
     source_url: str,
     document: dict[str, Any],
     collected_at: datetime,
@@ -408,6 +513,20 @@ def _is_fresh(snapshot: MarketSnapshot, now: datetime) -> bool:
     if collected.tzinfo is None:
         collected = collected.replace(tzinfo=timezone.utc)
     return timedelta(0) <= now - collected <= CACHE_MAX_AGE
+
+
+def _snapshot_matches_contract(
+    snapshot: MarketSnapshot,
+    network: str | None,
+    address: str | None,
+) -> bool:
+    cached_address = (snapshot.contract_address or "").strip().casefold()
+    selected_address = (address or "").strip().casefold()
+    if cached_address != selected_address:
+        return False
+    if network:
+        return (snapshot.network or "").strip().casefold() == network.casefold()
+    return True
 
 
 def _nested_number(

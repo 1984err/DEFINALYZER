@@ -4,12 +4,16 @@ from pathlib import Path
 
 from definalyzer.extraction import (
     RESEARCH_CATEGORIES,
+    _cross_category_context,
+    _populated_ledger_categories,
     build_extraction_prompt,
     extract_research_page,
     extract_research_page_chunked,
     load_source_bundle,
     normalize_markdown_spacing,
+    remove_redundant_facts_heading,
     split_source_chunks,
+    source_selection,
     validate_extraction_output,
 )
 from definalyzer.providers import ProviderResponse
@@ -66,6 +70,21 @@ class ChunkProvider:
 
 
 class ExtractionTests(unittest.TestCase):
+    def test_cross_page_context_distinguishes_sibling_facts_from_empty_sections(self):
+        ledger = (
+            "# Research Ledger\n\n## revenue-model\n\n"
+            "- Fees are burned [gas.md].\n\n## tokenomics\n\n"
+            "- No relevant facts.\n\n## security\n\n"
+            "- Validator losses are described [validators.md].\n"
+        )
+        categories = _populated_ledger_categories(ledger)
+        self.assertEqual(categories, {"revenue-model", "security"})
+        context = _cross_category_context(categories)
+        self.assertIn("Revenue-Model.md", context)
+        self.assertIn("Security.md", context)
+        self.assertNotIn("Tokenomics.md", context)
+        self.assertIn("never fill a field from the inventory alone", context)
+
     def test_normalizes_heading_and_table_block_spacing(self):
         text = normalize_markdown_spacing(
             "# Risk\n## Register\nVerification: [[Check]]\n"
@@ -74,6 +93,14 @@ class ExtractionTests(unittest.TestCase):
 
         self.assertIn("# Risk\n\n## Register\n\n", text)
         self.assertIn("Verification: [[Check]]\n\n| A | B |", text)
+
+    def test_removes_redundant_facts_wrapper_without_removing_content(self):
+        text = remove_redundant_facts_heading(
+            "# Protocol Overview\n\n# Facts\n\n## Identity\n\nUseful fact."
+        )
+
+        self.assertNotIn("# Facts", text)
+        self.assertIn("## Identity\n\nUseful fact.", text)
 
     def test_loads_sources_in_stable_order_with_boundaries(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -115,6 +142,14 @@ class ExtractionTests(unittest.TestCase):
                 "press links",
                 encoding="utf-8",
             )
+            (root / "TermsOfUse.md").write_text(
+                "umbrella legal terms for multiple products",
+                encoding="utf-8",
+            )
+            (root / "PrivacyPolicy.md").write_text(
+                "privacy boilerplate",
+                encoding="utf-8",
+            )
             tutorials = root / "tutorials-v2"
             tutorials.mkdir()
             (tutorials / "create-market.md").write_text(
@@ -133,6 +168,61 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual([path.name for path in files], ["protocol.md"])
         self.assertIn("protocol facts", bundle)
         self.assertNotIn("logo rules", bundle)
+
+    def test_reference_catalogs_are_retained_but_excluded_from_ai(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "overview.md").write_text(
+                "Material protocol mechanics.", encoding="utf-8"
+            )
+            subscriptions = root / "subscriptions" / "user"
+            subscriptions.mkdir(parents=True)
+            reference = subscriptions / "orders.md"
+            reference.write_text(
+                "Endpoint field catalog.", encoding="utf-8"
+            )
+            fix_api = root / "fix-api"
+            fix_api.mkdir()
+            (fix_api / "messages.md").write_text(
+                "FIX tag catalog.", encoding="utf-8"
+            )
+
+            bundle, files = load_source_bundle(root)
+            selection = source_selection(root)
+
+        self.assertEqual([path.name for path in files], ["overview.md"])
+        self.assertIn("Material protocol mechanics", bundle)
+        self.assertEqual(len(selection.excluded), 2)
+        self.assertGreater(selection.excluded_characters, 0)
+
+    def test_missing_tokenomics_writes_compact_page_without_provider_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manager = WorkspaceManager(root / "output")
+            workspace = manager.create_project(
+                name="No Token",
+                docs_url="https://docs.example.test",
+            )
+            workspace.sources_directory.mkdir(parents=True, exist_ok=True)
+            (workspace.sources_directory / "overview.md").write_text(
+                "A trading system without documented token economics.",
+                encoding="utf-8",
+            )
+            provider = ChunkProvider()
+
+            result = extract_research_page(
+                workspace=workspace,
+                template_name="tokenomics",
+                provider=provider,
+                prompts_root=root / "missing-prompts-not-needed",
+            )
+            output = result.output_path.read_text(encoding="utf-8")
+
+        self.assertEqual(result.provider_calls, 0)
+        self.assertEqual(result.mode, "coverage-placeholder")
+        self.assertEqual(provider.prompts, [])
+        self.assertIn("coverage limitation", output)
+        self.assertNotIn("## Allocation and Vesting", output)
 
     def test_builds_prompt_without_omitting_source(self):
         prompt = build_extraction_prompt(

@@ -6,8 +6,6 @@
 > or liquidity materially affects the protocol. Exclude marketing partnerships
 > and optional integrations without analytical significance.
 
-# Facts
-
 ## Critical Dependencies
 
 | Dependency | Type | Required Function | Required | Failure Effect |

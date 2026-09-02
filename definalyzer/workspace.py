@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +33,10 @@ STAGE_NAMES = (
     "obsidian_links",
 )
 STAGE_STATUSES = {"not_started", "pending", "complete", "partial", "blocked"}
+INVALID_PROJECT_NAME = re.compile(r'[<>:"/\\|?*\[\]#^\x00-\x1f]')
+RESERVED_WINDOWS_NAME = re.compile(
+    r"(?i)^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$"
+)
 
 
 def slugify(value: str) -> str:
@@ -114,6 +119,7 @@ class WorkspaceManager:
             self.root / "vault" / "Protocols",
             self.root / "vault" / "Chains",
             self.root / "vault" / "Tokens",
+            self.root / "vault" / "Coins",
             self.root / "vault" / "Verification",
             self.root / "vault" / "Analyst Reviews",
             self.root / "vault" / "Indexes",
@@ -141,8 +147,7 @@ class WorkspaceManager:
         self.initialize()
         clean_name = name.strip()
 
-        if not clean_name:
-            raise ValueError("Project name cannot be empty.")
+        _validate_project_name(clean_name)
         if entity_type not in ENTITY_TYPES:
             raise ValueError(
                 "Entity type must be protocol, chain, or token."
@@ -236,6 +241,90 @@ class WorkspaceManager:
         for manifest in sorted((self.root / "projects").glob("*/project.json")):
             projects.append(self.load_project(manifest.parent.name))
         return projects
+
+    def delete_project(self, workspace: ProjectWorkspace) -> tuple[Path, ...]:
+        """Permanently remove one project and its unshared generated notes."""
+
+        current = self.load_project(workspace.slug)
+        token_symbols = self._project_token_symbols(current)
+        shared_symbols: set[str] = set()
+        for other in self.list_projects():
+            if (
+                other.slug != current.slug
+                and (other.document["entity_type"] == "chain")
+                == (current.document["entity_type"] == "chain")
+            ):
+                shared_symbols.update(self._project_token_symbols(other))
+
+        targets = [
+            current.project_root,
+            current.sources_directory,
+            current.registry_directory,
+            current.vault_entity_directory,
+            current.verification_directory,
+            current.vault_root / "Analyst Reviews" / current.name,
+        ]
+        shared_symbol_keys = {symbol.casefold() for symbol in shared_symbols}
+        for symbol in sorted(
+            value
+            for value in token_symbols
+            if value.casefold() not in shared_symbol_keys
+        ):
+            asset_section = (
+                "Coins" if current.document["entity_type"] == "chain" else "Tokens"
+            )
+            targets.append(current.vault_root / asset_section / symbol)
+
+        removed: list[Path] = []
+        for target in targets:
+            if not target.exists():
+                continue
+            self._validate_delete_target(current, target)
+            if target.is_symlink():
+                target.unlink()
+            else:
+                shutil.rmtree(target)
+            removed.append(target)
+
+        self.refresh_vault_indexes()
+        return tuple(removed)
+
+    @staticmethod
+    def _project_token_symbols(workspace: ProjectWorkspace) -> set[str]:
+        path = workspace.registry_directory / "registry.json"
+        if not path.exists():
+            return set()
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return set()
+        tokens = document.get("tokens", []) if isinstance(document, dict) else []
+        return {
+            str(token["symbol"]).strip()
+            for token in tokens
+            if isinstance(token, dict)
+            and isinstance(token.get("symbol"), str)
+            and str(token["symbol"]).strip()
+        }
+
+    def _validate_delete_target(
+        self,
+        workspace: ProjectWorkspace,
+        target: Path,
+    ) -> None:
+        allowed_parents = {
+            (self.root / "projects").resolve(),
+            (self.root / "sources").resolve(),
+            (self.root / "registries").resolve(),
+            (workspace.vault_root / "Protocols").resolve(),
+            (workspace.vault_root / "Chains").resolve(),
+            (workspace.vault_root / "Tokens").resolve(),
+            (workspace.vault_root / "Coins").resolve(),
+            (workspace.vault_root / "Verification").resolve(),
+            (workspace.vault_root / "Analyst Reviews").resolve(),
+        }
+        if target.parent.resolve() not in allowed_parents:
+            raise ValueError(f"Refusing to delete unexpected project path: {target}")
 
     def update_stage(
         self,
@@ -354,7 +443,7 @@ class WorkspaceManager:
             for old, new in replacements.items():
                 updated = updated.replace(old, new)
             if updated != text:
-                page.write_text(updated, encoding="utf-8", newline="\n")
+                _write_text_atomic(page, updated)
 
     @staticmethod
     def _write_new(document: Mapping[str, Any], path: Path) -> None:
@@ -378,6 +467,13 @@ class WorkspaceManager:
             raise ValueError("Project manifest must be a JSON object.")
         if document.get("schema_version") != WORKSPACE_SCHEMA_VERSION:
             raise ValueError("Unsupported project manifest schema version.")
+        name = document.get("name")
+        slug = document.get("slug")
+        if not isinstance(name, str):
+            raise ValueError("Project manifest has an invalid project name.")
+        _validate_project_name(name)
+        if not isinstance(slug, str) or slug != slugify(name):
+            raise ValueError("Project manifest has an invalid project slug.")
         if document.get("entity_type") not in ENTITY_TYPES:
             raise ValueError("Project manifest has an invalid entity type.")
         if document.get("verification_status") not in VERIFICATION_STATUSES:
@@ -417,4 +513,22 @@ class WorkspaceManager:
             text,
             count=1,
         )
-        index.write_text(text, encoding="utf-8")
+        _write_text_atomic(index, text)
+
+
+def _validate_project_name(value: str) -> None:
+    if not value:
+        raise ValueError("Project name cannot be empty.")
+    if value in {".", ".."} or value.endswith((".", " ")):
+        raise ValueError("Project name is not safe for a workspace folder.")
+    if INVALID_PROJECT_NAME.search(value) or RESERVED_WINDOWS_NAME.fullmatch(value):
+        raise ValueError(
+            "Project name cannot contain filesystem or Obsidian link control "
+            "characters."
+        )
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(text, encoding="utf-8", newline="\n")
+    temporary.replace(path)

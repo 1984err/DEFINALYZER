@@ -29,3 +29,7 @@ evidence.
 used to translate research verification requests into collection jobs. See
 `blockchain_collector/VERIFICATION_IMPORT.md` for the importer contract and
 commands.
+
+`research_output/` is a fictional compact Obsidian example showing a protocol
+overview, token index, and manual verification entry. It demonstrates output
+structure only and contains no real protocol claims.
