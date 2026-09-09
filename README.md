@@ -10,7 +10,11 @@ useful when verification is skipped or unavailable.
 
 Start here:
 
-[Watch the 45-second DEFINALYZER walkthrough (16:9, with audio)](https://github.com/1984err/DEFINALYZER/blob/main/media/definalyzer-ad/DEFINALYZER-workflow-16x9-music.mp4)
+
+
+https://github.com/user-attachments/assets/03096660-8fd7-476e-8aca-1ea35ee29754
+
+
 
 The walkthrough shows the application interface, saved research, verification,
 analysis questions, and management reports, including a chart presentation example.
