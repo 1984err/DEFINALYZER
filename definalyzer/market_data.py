@@ -8,6 +8,7 @@ documented research facts and raw on-chain evidence.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .workspace import ProjectWorkspace
+from .asset_identity import asset_kind, resolve_asset, ID
 
 
 COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
@@ -69,6 +71,7 @@ def refresh_market_data(
     *,
     workspace: ProjectWorkspace,
     force: bool = False,
+    asset_id: str = "",
     fetch_json: JsonFetcher | None = None,
     sleep: SleepFunction = time.sleep,
     now: datetime | None = None,
@@ -86,6 +89,14 @@ def refresh_market_data(
     if not isinstance(tokens, list) or not isinstance(addresses, list):
         raise ValueError("Project registry has invalid token or address data.")
 
+    selected_tokens = tokens
+    if asset_id:
+        selected_tokens = [token for token in tokens if isinstance(token, dict)
+                           and (entity := resolve_asset(workspace, token))
+                           and entity["entity_id"] == asset_id]
+        if not selected_tokens:
+            raise ValueError("Selected asset is not registered in this project.")
+
     current = now or datetime.now(timezone.utc)
     fetcher = fetch_json or (
         lambda url: _fetch_json_with_backoff(url, sleep=sleep)
@@ -96,14 +107,15 @@ def refresh_market_data(
     coin_list: Any = None
     coin_list_loaded = False
 
-    for token in tokens:
+    for token in selected_tokens:
         if not isinstance(token, dict):
             continue
         symbol = str(token.get("symbol") or "").strip()
         if not symbol:
             continue
-        network, address = _select_contract(token, addresses)
-        native_coin = workspace.document["entity_type"] == "chain" and not address
+        network, address = _select_contract(token, addresses if sum(
+            str(t.get("symbol", "")).casefold() == symbol.casefold() for t in tokens) == 1 else [])
+        native_coin = asset_kind(token, workspace.document["entity_type"]) == "coin" and not address
         if native_coin:
             documented_network = str(token.get("network") or "").strip()
             network = (
@@ -113,8 +125,9 @@ def refresh_market_data(
             )
         if network and network.casefold() == "not documented":
             network = None
-        cache_path = market_snapshot_path(workspace, symbol)
-        cached = _load_snapshot(cache_path)
+        entity = resolve_asset(workspace, token)
+        cache_path = market_snapshot_path(workspace, symbol, asset_id=entity["entity_id"] if entity else "")
+        cached = load_market_snapshot(workspace, symbol, asset_id=entity["entity_id"] if entity else "")
         if (
             not force
             and cached
@@ -245,7 +258,12 @@ def refresh_market_data(
 def market_snapshot_path(
     workspace: ProjectWorkspace,
     symbol: str,
+    *, asset_id: str = "",
 ) -> Path:
+    if asset_id:
+        if not ID.fullmatch(asset_id):
+            raise ValueError("Invalid market-data asset ID.")
+        return workspace.registry_directory / "market-data" / f"{asset_id}.json"
     safe_symbol = "".join(
         character
         for character in symbol.upper()
@@ -257,8 +275,34 @@ def market_snapshot_path(
 def load_market_snapshot(
     workspace: ProjectWorkspace,
     symbol: str,
+    *, asset_id: str = "",
 ) -> MarketSnapshot | None:
-    return _load_snapshot(market_snapshot_path(workspace, symbol))
+    registry = workspace.registry_directory / "registry.json"
+    if not registry.exists():
+        return None
+    document = json.loads(registry.read_text(encoding="utf-8"))
+    rows = document.get("tokens", [])
+    same_symbol = [r for r in rows if str(r.get("symbol", "")).casefold() == symbol.casefold()]
+    matches = [(r, resolve_asset(workspace, r)) for r in rows]
+    if asset_id:
+        matches = [(r, e) for r, e in matches if e and e["entity_id"] == asset_id]
+    else:
+        matches = [(r, e) for r, e in matches if r in same_symbol]
+    if len(matches) != 1:
+        return None  # An ambiguous ticker cannot choose cached evidence.
+    row, entity = matches[0]
+    asset_id = entity["entity_id"] if entity else ""
+    network, address = _select_contract(row, document.get("addresses", []) if len(same_symbol) == 1 else [])
+    if network and network.casefold() in MISSING_ADDRESS_VALUES:
+        network = None
+    current = _load_snapshot(market_snapshot_path(workspace, symbol, asset_id=asset_id))
+    if current:
+        return current if _snapshot_matches_contract(current, network, address) else None
+    if asset_id and len(same_symbol) == 1:
+        legacy = _load_snapshot(market_snapshot_path(workspace, symbol))
+        if legacy and _snapshot_matches_contract(legacy, network, address):
+            return legacy
+    return None
 
 
 def _select_contract(
@@ -308,7 +352,7 @@ def _match_platform_by_address(
 ) -> tuple[str, str] | None:
     if not isinstance(document, list):
         raise ValueError("CoinGecko coin list returned a non-list response.")
-    target = address.casefold()
+    target = _address_key(address)
     matches: set[str] = set()
     for coin in document:
         if not isinstance(coin, dict):
@@ -320,7 +364,7 @@ def _match_platform_by_address(
             if (
                 isinstance(platform_id, str)
                 and isinstance(candidate, str)
-                and candidate.strip().casefold() == target
+                and _address_key(candidate) == target
             ):
                 matches.add(platform_id)
     if len(matches) != 1:
@@ -462,6 +506,7 @@ def _fetch_json_with_backoff(
     sleep: SleepFunction,
     attempts: int = 3,
 ) -> Any:
+    from .cancellation import check_cancelled
     request = Request(
         url,
         headers={
@@ -470,9 +515,12 @@ def _fetch_json_with_backoff(
         },
     )
     for attempt in range(attempts):
+        check_cancelled()
         try:
             with urlopen(request, timeout=30) as response:
-                return json.loads(response.read().decode("utf-8"))
+                result = json.loads(response.read().decode("utf-8"))
+                check_cancelled()
+                return result
         except HTTPError as exc:
             if exc.code != 429 or attempt == attempts - 1:
                 raise
@@ -515,13 +563,18 @@ def _is_fresh(snapshot: MarketSnapshot, now: datetime) -> bool:
     return timedelta(0) <= now - collected <= CACHE_MAX_AGE
 
 
+def _address_key(address: str) -> str:
+    value = address.strip()
+    return value.lower() if re.fullmatch(r"0x[a-fA-F0-9]{40}", value) else value
+
+
 def _snapshot_matches_contract(
     snapshot: MarketSnapshot,
     network: str | None,
     address: str | None,
 ) -> bool:
-    cached_address = (snapshot.contract_address or "").strip().casefold()
-    selected_address = (address or "").strip().casefold()
+    cached_address = _address_key(snapshot.contract_address or "")
+    selected_address = _address_key(address or "")
     if cached_address != selected_address:
         return False
     if network:

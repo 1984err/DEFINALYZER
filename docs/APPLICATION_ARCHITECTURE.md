@@ -16,7 +16,6 @@ provides:
 - action availability and a human-readable reason for every disabled action
 - research-page inventory and pending-assessment counts
 - provider-backed project Q&A
-- optional, versioned Dune query dialogue
 - deterministic CoinGecko supply refresh
 
 `ProjectSnapshot.to_dict()` is safe to return from a local HTTP endpoint. Paths
@@ -41,11 +40,42 @@ Hermes or RPC credentials to the browser.
   refreshed from the canonical verification Markdown after approved changes.
 - Dashboard metadata may use a local database later, but research content must
   remain exportable as ordinary Markdown.
+- Evidence-backed reports use the provider-neutral package and validation rules
+  in [REPORT_CONTRACT.md](REPORT_CONTRACT.md). Report Markdown remains separate
+  from concise extraction pages, with companion evidence and assertion ledgers.
+- Report evidence preparation is an offline domain operation over a bounded,
+  project-owned source allowlist. Its saved snapshot and omissions are
+  auditable; retrieval success is not verification or factual completeness.
+- Report drafting uses the shared provider boundary but validates structured
+  findings and a report plan before deterministically rendering Markdown. Its
+  committed bundle supports interruption recovery without silently replacing
+  human-edited prose.
+- Report quality review is a separate provider-neutral domain step over the
+  committed report, assertion ledger, and exact saved evidence. Deterministic
+  citation/provenance checks and bounded semantic support checks write an
+  immutable recoverable quality record; they neither edit report claims nor
+  replace independent verification and human approval.
+- Report lifecycle operations archive complete numbered revisions and require
+  reconciled assertion ledgers for human edits. A bounded provider may revise
+  one analyst-selected assertion but cannot control Markdown or approval.
+  Finalization is deterministic, requires an unchanged passing quality review
+  plus explicit human approval, and binds that approval to content hashes.
+- Final report export is another UI-neutral domain operation. It creates
+  immutable Markdown, HTML, and PDF publication bundles only from validated
+  final reports. Optional visuals extract named numeric fields directly from
+  dated saved JSON evidence and retain their SVG, data, provenance, units, and
+  limitations; absence of suitable data produces no graph.
+- The dashboard report workspace calls these same application-domain methods
+  for every lifecycle transition. It lists only active report and quality
+  Markdown in the reader, runs AI steps through the existing single-worker job
+  queue, requires explicit approval inputs for finalization, and rechecks
+  export file hashes before serving local HTML, PDF, Markdown, or SVG files.
 
 ## Safety boundaries
 
 - UI shells do not store Hermes or RPC credentials.
-- Dune queries are drafted but never executed automatically.
+- Indexed-query integrations such as Dune are deferred until an authenticated
+  API adapter can execute queries and preserve result provenance.
 - AI responses do not change verification status without the existing analyst
   approval step.
 - Destructive actions retain exact project selection and confirmation in the

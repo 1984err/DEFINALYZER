@@ -107,15 +107,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--workspace",
         default=str(DEFAULT_WORKSPACE),
-        help="Generated project and Obsidian output root.",
+        help="Generated project and research output root.",
     )
     subparsers = parser.add_subparsers(dest="command")
+    scope = subparsers.add_parser("scope", help="Prepare automatic subject scope from saved sources.")
+    scope.add_argument("project")
+    scope.add_argument("--index-only", action="store_true", help="Save snapshots and a provisional plan without AI calls.")
+    scope.add_argument("--call-budget", type=int, default=32)
+    scope.add_argument("--extend", action="store_true", help="Explicitly add classification calls to the saved budget.")
+    assets = subparsers.add_parser("assets", help="Preview or apply additive asset identity migration.")
+    assets.add_argument("action", choices=("migrate",))
+    assets.add_argument("--apply", action="store_true", help="Apply the previewed migration; preserves original files.")
 
     init = subparsers.add_parser("init", help="Create a research project.")
     init.add_argument("name")
     init.add_argument(
         "--type",
-        choices=("protocol", "chain", "token"),
+        choices=("protocol", "chain", "token", "coin"),
         default="protocol",
     )
     init.add_argument("--docs-url")
@@ -232,22 +240,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Save the non-canonical answer under Analyst Reviews.",
     )
 
-    dune = subparsers.add_parser(
-        "dune",
-        help="Draft or revise an optional Dune query for one eligible check.",
-    )
-    dune.add_argument("project")
-    dune.add_argument("verification_id")
-    dune.add_argument(
-        "--feedback-type",
-        choices=("error", "result", "context"),
-        help="Continue an existing dialogue with pasted Dune feedback.",
-    )
-    dune.add_argument(
-        "--feedback",
-        help="Exact Dune error, result summary/link, or additional context.",
-    )
-
     source = subparsers.add_parser(
         "source",
         help="Register, list, or collect categorized official sources.",
@@ -317,6 +309,17 @@ def main(
     application = DefinalyzerApplication(manager)
 
     try:
+        if args.command == "scope":
+            from .research_scope import prepare_scope, scope_summary
+            workspace = application.load_project(args.project)
+            prepare_scope(workspace, provider=None if args.index_only else application.provider(), call_budget=args.call_budget, extend=args.extend, progress=print_fn)
+            summary = scope_summary(workspace)
+            print_fn(json.dumps({k: v for k, v in summary.items() if k != "groups"}, indent=2))
+            return 0
+        if args.command == "assets":
+            from .asset_identity import migrate_assets
+            print_fn(json.dumps(migrate_assets(manager, preview=not args.apply), indent=2))
+            return 0
         if args.command is None:
             return run_menu(manager, input_fn=input_fn, print_fn=print_fn)
         if args.command == "dashboard":
@@ -446,20 +449,6 @@ def main(
                 save=args.save,
                 print_fn=print_fn,
             )
-        if args.command == "dune":
-            workspace = application.load_project(args.project)
-            if bool(args.feedback_type) != bool(args.feedback):
-                raise ValueError(
-                    "--feedback-type and --feedback must be supplied together."
-                )
-            return _dune_assistant(
-                manager,
-                workspace,
-                verification_id=args.verification_id,
-                feedback_type=args.feedback_type,
-                feedback=args.feedback,
-                print_fn=print_fn,
-            )
         if args.command == "source":
             workspace = application.load_project(args.project)
             return _source_command(
@@ -548,23 +537,21 @@ def run_menu(
         print_fn("7. Collect blockchain evidence")
         print_fn("8. Generate evidence assessment proposals")
         print_fn("9. Review and approve assessments")
-        print_fn("10. Draft or revise an optional Dune query")
-        print_fn("")
         print_fn("RESEARCH TOOLS AND SETTINGS")
-        print_fn("11. Configure or test AI provider")
-        print_fn("12. View project status")
-        print_fn("13. Refresh current token supply data")
-        print_fn("14. Ask a question about project research")
-        print_fn("15. Manage official sources")
-        print_fn("16. Add or update a token manually")
-        print_fn("17. Refresh Obsidian vault indexes")
-        print_fn("18. Delete a project and its generated data")
+        print_fn("10. Configure or test AI provider")
+        print_fn("11. View project status")
+        print_fn("12. Refresh current token supply data")
+        print_fn("13. Ask a question about project research")
+        print_fn("14. Manage official sources")
+        print_fn("15. Add or update a token manually")
+        print_fn("16. Refresh research navigation indexes")
+        print_fn("17. Delete a project and its generated data")
         print_fn("")
         print_fn("ADVANCED TOOLS")
-        print_fn("19. Open standalone evidence collector (advanced)")
-        print_fn("20. Open local dashboard")
-        print_fn("21. Exit")
-        choice = input_fn("Choice [1-21]: ").strip()
+        print_fn("18. Open standalone evidence collector (advanced)")
+        print_fn("19. Open local dashboard")
+        print_fn("20. Exit")
+        choice = input_fn("Choice [1-20]: ").strip()
 
         try:
             if choice == "1":
@@ -701,21 +688,13 @@ def run_menu(
                         print_fn=print_fn,
                     )
             elif choice == "10":
-                workspace = _menu_project(manager, input_fn, print_fn)
-                _menu_dune_assistant(
-                    manager,
-                    workspace,
-                    input_fn=input_fn,
-                    print_fn=print_fn,
-                )
-            elif choice == "11":
                 _menu_provider(manager, input_fn, print_fn)
-            elif choice == "12":
+            elif choice == "11":
                 name = input_fn(
                     "Project name (leave blank to list all): "
                 ).strip()
                 _show_status(manager, name or None, print_fn)
-            elif choice == "13":
+            elif choice == "12":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _market_data(
                     workspace,
@@ -725,7 +704,7 @@ def run_menu(
                     ),
                     print_fn=print_fn,
                 )
-            elif choice == "14":
+            elif choice == "13":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _menu_analyst_review(
                     manager,
@@ -733,7 +712,7 @@ def run_menu(
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "15":
+            elif choice == "14":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _menu_sources(
                     manager,
@@ -741,7 +720,7 @@ def run_menu(
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "16":
+            elif choice == "15":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _menu_manual_token(
                     manager,
@@ -749,18 +728,18 @@ def run_menu(
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "17":
+            elif choice == "16":
                 paths = application.refresh_indexes()
                 print_fn(f"Refreshed {len(paths)} vault indexes.")
                 for path in paths:
                     print_fn(f"Index: {path}")
-            elif choice == "18":
+            elif choice == "17":
                 _menu_delete_project(
                     manager,
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "19":
+            elif choice == "18":
                 workspace = _menu_project(manager, input_fn, print_fn)
                 _collect(
                     manager,
@@ -768,15 +747,15 @@ def run_menu(
                     input_fn=input_fn,
                     print_fn=print_fn,
                 )
-            elif choice == "20":
+            elif choice == "19":
                 from .dashboard import run_dashboard
 
                 run_dashboard(manager, print_fn=print_fn)
-            elif choice == "21":
+            elif choice == "20":
                 print_fn("Goodbye.")
                 return 0
             else:
-                print_fn("Please enter a number from 1 to 21.")
+                print_fn("Please enter a number from 1 to 20.")
         except (OSError, RuntimeError, ValueError) as exc:
             print_fn(f"Stopped: {exc}")
 
@@ -1110,15 +1089,16 @@ def _crawl(
                     "Crawler dependencies are unavailable. Run "
                     "'pip install -r requirements.txt' and 'crawl4ai-setup'."
                 ) from exc
+            from .cancellation import cancellable
             summary = asyncio.run(
-                crawl_protocol(
+                cancellable(crawl_protocol(
                     protocol_name=workspace.name,
                     docs_url=docs_url,
                     output_root=manager.root / "sources",
                     pattern=pattern,
                     refresh=refresh,
                     retries=retries,
-                )
+                ))
             )
     except Exception as exc:
         manager.update_stage(
@@ -1714,6 +1694,14 @@ def _menu_manual_token(
         (row for row in existing if row.symbol.casefold() == symbol.casefold()),
         None,
     )
+    matches = [row for row in existing if row.symbol.casefold() == symbol.casefold()]
+    if len(matches) > 1:
+        for row in matches:
+            print_fn(f"{row.asset_id}: {row.name} ({row.network}, {row.address})")
+        chosen = _required(input_fn, "Asset ID to update (or new): ")
+        current = next((row for row in matches if row.asset_id == chosen), None)
+        if chosen != "new" and current is None:
+            raise ValueError("Select an existing asset ID or enter new.")
 
     def field(label: str, attribute: str, default: str) -> str:
         prior = getattr(current, attribute) if current else default
@@ -1721,6 +1709,8 @@ def _menu_manual_token(
         return value or prior
 
     token = TokenRecord(
+        asset_id=current.asset_id if current else "",
+        asset_kind=current.asset_kind if current else "",
         name=field("Token name", "name", symbol),
         symbol=symbol,
         token_type=field("Type", "token_type", "Not documented"),
@@ -2135,15 +2125,16 @@ def _crawl_official_source(
             "Crawler dependencies are unavailable. Run "
             "'pip install -r requirements.txt' and 'crawl4ai-setup'."
         ) from exc
+    from .cancellation import cancellable
     result = asyncio.run(
-        crawl_protocol(
+        cancellable(crawl_protocol(
             protocol_name=source_id,
             docs_url=url,
             output_root=destination_root.parent,
             pattern=url,
             refresh=refresh,
             retries=DEFAULT_RETRIES,
-        )
+        ))
     )
     if result.failed:
         raise RuntimeError(
@@ -2822,9 +2813,7 @@ def _default_crawl_pattern(docs_url: str) -> str:
     if not path:
         return DEFAULT_PATTERN
     if not parsed_path.endswith("/"):
-        parent = path.rpartition("/")[0]
-        if parent:
-            path = parent
+        return docs_url.strip()
     return f"*{path}/*"
 
 

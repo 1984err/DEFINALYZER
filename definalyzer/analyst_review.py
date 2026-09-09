@@ -394,6 +394,11 @@ def _project_passages(
 
 
 def _project_token_pages(workspace: ProjectWorkspace) -> tuple[Path, ...]:
+    from .asset_identity import project_asset_pages
+    return project_asset_pages(workspace)
+
+
+def _legacy_project_token_pages(workspace: ProjectWorkspace) -> tuple[Path, ...]:
     registry = workspace.registry_directory / "registry.json"
     if not registry.exists():
         return ()
@@ -593,6 +598,10 @@ def _build_prompt(
         "be incomplete. Do not use prior knowledge or browse. Do not treat an "
         "unverified claim as verified. Explain terminology and mechanics in plain "
         "language while preserving material caveats.\n\n"
+        "Research views and legacy notes are retrieval aids, not new corroborating sources. "
+        "When saved original documentation is supplied, ground factual explanations in it. "
+        "Repeating one source in several notes does not create independent evidence. "
+        "Respect each statement's subject, date, network and conditions.\n\n"
         "Synthesize across passages when necessary. Cite supporting material inline "
         "as `[Source N]`. Clearly label reasoning as `Inference` and absent or "
         "insufficient information as `Unknown`. If the passages do not answer the "

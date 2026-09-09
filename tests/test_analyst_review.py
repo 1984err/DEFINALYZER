@@ -104,6 +104,9 @@ class AnalystReviewTests(unittest.TestCase):
                 "Borrowers pay an origination fee to the treasury.\n",
                 encoding="utf-8",
             )
+            dormant = workspace.project_root / "facts" / "current.json"
+            dormant.parent.mkdir(parents=True)
+            dormant.write_text("invalid dormant V2 state", encoding="utf-8")
             provider = RecordingProvider()
             result = run_analyst_review(
                 workspace=workspace,

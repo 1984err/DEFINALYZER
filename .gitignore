@@ -7,6 +7,11 @@
 output/
 dist/
 build/
+tmp/
+
+# Local video editing assets; publish only the finished widescreen video
+media/definalyzer-ad/*
+!media/definalyzer-ad/DEFINALYZER-workflow-16x9-music.mp4
 
 # Local planning / diagnostic artifacts
 BETA_TODO.md

@@ -15,6 +15,7 @@ from crawl4ai import (
     AsyncUrlSeeder,
     AsyncWebCrawler,
     CrawlerRunConfig,
+    CacheMode,
     SeedingConfig,
 )
 from crawler.discovery import (
@@ -197,9 +198,8 @@ async def discover_urls(
     }
 
     if discovered or not seed_url:
-        return sorted(
-            url for url in discovered if is_research_documentation_url(url)
-        )
+        return matching_internal_urls(domain=domain, pattern=pattern,
+                                      links=[{"href": url} for url in discovered])
 
     crawl_config = CrawlerRunConfig(only_text=True, word_count_threshold=1)
     async with AsyncWebCrawler() as crawler:
@@ -217,7 +217,6 @@ async def discover_urls(
             links=internal,
             seed_url=seed_url,
         )
-        if is_research_documentation_url(url)
     ]
 
 
@@ -302,14 +301,25 @@ async def crawl_protocol(
     print(f"Pattern:  {pattern}")
     print("Discovering documentation URLs...")
 
+    if pattern == DEFAULT_PATTERN and urlparse(docs_url).path.strip("/"):
+        seed_path = urlparse(docs_url).path
+        pattern = f"*{seed_path}*" if seed_path.endswith("/") else docs_url
     urls = await discover_urls(domain, pattern, seed_url=docs_url)
     if not urls and pattern == DEFAULT_PATTERN:
-        print(
-            "No /docs/ URLs found; retrying discovery across the "
-            "documentation domain."
-        )
-        pattern = SITE_WIDE_PATTERN
-        urls = await discover_urls(domain, pattern, seed_url=docs_url)
+        # A broad sitemap is candidate discovery, not collection authorization.
+        # Follow only same-host links observed on the supplied docs root.
+        print("No /docs/ URLs found; inspecting the documentation root navigation.")
+        async with AsyncWebCrawler() as navigator:
+            root_page = await navigator.arun(url=docs_url, config=CrawlerRunConfig(only_text=True, word_count_threshold=1))
+        links = getattr(root_page, "links", {}) if root_page.success else {}
+        urls = matching_internal_urls(domain=domain, pattern="*", seed_url=docs_url,
+                                      links=links.get("internal", []) if isinstance(links, dict) else [])
+        seed_path = urlparse(docs_url).path.rstrip("/")
+        if seed_path:
+            urls = [url for url in urls if urlparse(url).path.rstrip("/") == seed_path
+                    or urlparse(url).path.startswith(seed_path + "/")]
+        write_text_atomic(output_dir / "_collection-boundary.json", json.dumps({
+            "seed": docs_url, "method": "observed root navigation", "authorized_urls": urls}, indent=2))
 
     if not urls:
         raise RuntimeError(
@@ -319,9 +329,16 @@ async def crawl_protocol(
     print(f"Found {len(urls)} documentation pages.\n")
 
     crawl_config = CrawlerRunConfig(
-        only_text=True,
-        word_count_threshold=50,
+        # Crawl4AI's text-only replacement can discard inline element tails:
+        # e.g. <strong>50%</strong> followed by its eligibility conditions.
+        only_text=False,
+        # Short list items and inline spans often contain the entire limiting
+        # condition (thresholds, delays, negation). Never prune by prose length.
+        word_count_threshold=1,
         excluded_tags=["nav", "header", "footer", "aside"],
+        # Our saved-file skip/refresh policy owns reuse. A hidden HTML/Markdown
+        # cache must not make Refresh return previously cleaned or stale text.
+        cache_mode=CacheMode.BYPASS,
     )
 
     saved = 0

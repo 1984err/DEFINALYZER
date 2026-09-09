@@ -1,0 +1,555 @@
+{
+  "schema_version": 1,
+  "purpose": "Resume demo acceptance; saved documentation, not live financial facts",
+  "project": "pump-fun",
+  "created": "2026-09-07",
+  "origin": "Existing immutable Pump snapshots; no new retrieval",
+  "blocks": {
+    "fees": {
+      "block_id": "4ac7602dfd67ee6d107ca9452b14c60ee408959ab95d69507a28a2103fb9e914",
+      "path": "_official/fees_revenue/fees-revenue-fees-34f7b585/docs/fees.md",
+      "source_url": "https://pump.fun/docs/fees",
+      "start_line": 24,
+      "end_line": 74,
+      "text": "# Fees\r\nLast Updated: 20 May 2026\r\nThe following are fees charged by the pump.fun platform when you use the pump.fun platform:  \r\n| Action  | Fee  |  \r\n| --- | --- |  \r\n| Create a coin  | 0 SOL / 0 USDC  |  \r\n| When a coin graduates from the pump.fun platform to PumpSwap*  | 0.015 SOL  |  \r\nOn every trade the creator receives some portion of the total fees. This is referred to as the “Creator fee” and is applicable for all coins that were present on the bonding curve or PumpSwap from the date of May 13th 2025. The fee that goes to the pump.fun platform is referred to as the “Protocol fee”. A portion of the fees also goes back to the pool in the form of liquidity – this is referred to as the “LP fee”.\r\nAs of May 21, 2026, token creators can use USDC as the paired token for their launched token instead of SOL. The fees for USDC tokens varies slightly from the fees for SOL tokens. Both sets of fees are described here.\r\nThe bonding curve fees are as follows for both USDC and SOL tokens:  \r\n| Creator fee  | Protocol fee  | LP fee  | Total fee  |  \r\n| --- | --- | --- | --- |  \r\n| 0.300%  | 0.95%  | 0%  | 1.25%  |  \r\nCoins that launched on the pump.fun platform and have graduated have an associated pool on PumpSwap. This pool is referred to as the “canonical pool”. PumpSwap fees for canonical pools vary depending on the SOL or USDC priced market cap of a coin. The market cap is calculated as the current price of the token in SOL or USDC multiplied by 1 billion tokens. The fee schedule for SOL denominated tokens is as follows:  \r\n| Market cap  | Creator fee  | Protocol fee  | LP fee  | Total fees  |  \r\n| --- | --- | --- | --- | --- |  \r\n| 0 – 420 SOL  | 0.300%  | 0.930%  | 0.020%  | 1.250%  |  \r\n| 420 – 1470 SOL  | 0.950%  | 0.050%  | 0.200%  | 1.200%  |  \r\n| 1470 – 2460 SOL  | 0.900%  | 0.050%  | 0.200%  | 1.150%  |  \r\n| 2460 – 3440 SOL  | 0.850%  | 0.050%  | 0.200%  | 1.100%  |  \r\n| 3440 – 4420 SOL  | 0.800%  | 0.050%  | 0.200%  | 1.050%  |  \r\n| 4420 – 9820 SOL  | 0.750%  | 0.050%  | 0.200%  | 1.000%  |  \r\n| 9820 – 14740 SOL  | 0.700%  | 0.050%  | 0.200%  | 0.950%  |  \r\n| 14740 – 19650 SOL  | 0.650%  | 0.050%  | 0.200%  | 0.900%  |  \r\n| 19650 – 24560 SOL  | 0.600%  | 0.050%  | 0.200%  | 0.850%  |  \r\n| 24560 – 29470 SOL  | 0.550%  | 0.050%  | 0.200%  | 0.800%  |  \r\n| 29470 – 34380 SOL  | 0.500%  | 0.050%  | 0.200%  | 0.750%  |  \r\n| 34380 – 39300 SOL  | 0.450%  | 0.050%  | 0.200%  | 0.700%  |  \r\n| 39300 – 44210 SOL  | 0.400%  | 0.050%  | 0.200%  | 0.650%  |  \r\n| 44210 – 49120 SOL  | 0.350%  | 0.050%  | 0.200%  | 0.600%  |  \r\n| 49120 – 54030 SOL  | 0.300%  | 0.050%  | 0.200%  | 0.550%  |  \r\n| 54030 – 58940 SOL  | 0.275%  | 0.050%  | 0.200%  | 0.525%  |  \r\n| 58940 – 63860 SOL  | 0.250%  | 0.050%  | 0.200%  | 0.500%  |  \r\n| 63860 – 68770 SOL  | 0.225%  | 0.050%  | 0.200%  | 0.475%  |  \r\n| 68770 – 73681 SOL  | 0.200%  | 0.050%  | 0.200%  | 0.450%  |  \r\n| 73681 – 78590 SOL  | 0.175%  | 0.050%  | 0.200%  | 0.425%  |  \r\n| 78590 – 83500 SOL  | 0.150%  | 0.050%  | 0.200%  | 0.400%  |  \r\n| 83500 – 88400 SOL  | 0.125%  | 0.050%  | 0.200%  | 0.375%  |  \r\n| 88400 – 93330 SOL  | 0.100%  | 0.050%  | 0.200%  | 0.350%  |  \r\n| 93330 – 98240 SOL  | 0.075%  | 0.050%  | 0.200%  | 0.325%  |  \r\n| 98240 SOL and up  | 0.050%  | 0.050%  | 0.200%  | 0.300%  |  \r\nFor USDC denominated tokens, the fee schedule is as follows:  \r\n| Market cap  | Creator fee  | Protocol fee  | LP fee  | Total fees  |  \r\n| --- | --- | --- | --- | --- |  \r\n| 0 – 59000 USDC  | 0.300%  | 0.930%  | 0.020%  | 1.250%  |  \r\n| 59000 – 100000 USDC  | 0.950%  | 0.050%  | 0.200%  | 1.200%  |  \r\n| 100000 – 200000 USDC  | 0.950%  | 0.050%  | 0.200%  | 1.200%  |  \r\n| 200000 – 300000 USDC  | 0.950%  | 0.050%  | 0.200%  | 1.200%  |  \r\n| 300000 – 400000 USDC  | 0.900%  | 0.050%  | 0.200%  | 1.150%  |  \r\n| 400000 – 500000 USDC  | 0.900%  | 0.050%  | 0.200%  | 1.150%  |  \r\n| 500000 – 600000 USDC  | 0.850%  | 0.050%  | 0.200%  | 1.100%  |  \r\n",
+      "snapshot_sha256": "fcd86b5bf35097019744a940d705ec208fa4b276cfc730cad1a3e6314950aa42",
+      "context_sha256": "988e70d2c72ea6416b2a6abdb9c8fbd3dc589d7d42dddb206e88a0b730a3975c"
+    },
+    "mobile": {
+      "block_id": "63ddc567b2d113f8541d1ca44b637a37e82c3235adc9e559b8d6048eca68be22",
+      "path": "_official/fees_revenue/fees-revenue-fees-34f7b585/docs/fees.md",
+      "source_url": "https://pump.fun/docs/fees",
+      "start_line": 75,
+      "end_line": 105,
+      "text": "| 600000 – 700000 USDC  | 0.850%  | 0.050%  | 0.200%  | 1.100%  |  \r\n| 700000 – 800000 USDC  | 0.800%  | 0.050%  | 0.200%  | 1.050%  |  \r\n| 800000 – 900000 USDC  | 0.800%  | 0.050%  | 0.200%  | 1.050%  |  \r\n| 900000 – 1000000 USDC  | 0.750%  | 0.050%  | 0.200%  | 1.000%  |  \r\n| 1000000 – 2000000 USDC  | 0.750%  | 0.050%  | 0.200%  | 1.000%  |  \r\n| 2000000 – 3000000 USDC  | 0.700%  | 0.050%  | 0.200%  | 0.950%  |  \r\n| 3000000 – 4000000 USDC  | 0.650%  | 0.050%  | 0.200%  | 0.900%  |  \r\n| 4000000 – 5000000 USDC  | 0.600%  | 0.050%  | 0.200%  | 0.850%  |  \r\n| 5000000 – 6000000 USDC  | 0.550%  | 0.050%  | 0.200%  | 0.800%  |  \r\n| 6000000 – 7000000 USDC  | 0.500%  | 0.050%  | 0.200%  | 0.750%  |  \r\n| 7000000 – 8000000 USDC  | 0.450%  | 0.050%  | 0.200%  | 0.700%  |  \r\n| 8000000 – 9000000 USDC  | 0.400%  | 0.050%  | 0.200%  | 0.650%  |  \r\n| 9000000 – 10000000 USDC  | 0.350%  | 0.050%  | 0.200%  | 0.600%  |  \r\n| 10000000 – 11000000 USDC  | 0.300%  | 0.050%  | 0.200%  | 0.550%  |  \r\n| 11000000 – 12000000 USDC  | 0.280%  | 0.050%  | 0.200%  | 0.530%  |  \r\n| 12000000 – 13000000 USDC  | 0.250%  | 0.050%  | 0.200%  | 0.500%  |  \r\n| 13000000 – 14000000 USDC  | 0.230%  | 0.050%  | 0.200%  | 0.480%  |  \r\n| 14000000 – 15000000 USDC  | 0.200%  | 0.050%  | 0.200%  | 0.450%  |  \r\n| 15000000 – 16000000 USDC  | 0.180%  | 0.050%  | 0.200%  | 0.430%  |  \r\n| 16000000 – 17000000 USDC  | 0.150%  | 0.050%  | 0.200%  | 0.400%  |  \r\n| 17000000 – 18000000 USDC  | 0.130%  | 0.050%  | 0.200%  | 0.380%  |  \r\n| 18000000 – 19000000 USDC  | 0.100%  | 0.050%  | 0.200%  | 0.350%  |  \r\n| 19000000 – 20000000 USDC  | 0.080%  | 0.050%  | 0.200%  | 0.330%  |  \r\n| 20000000 USDC and up  | 0.050%  | 0.050%  | 0.200%  | 0.300%  |  \r\nFor all other PumpSwap pools that are non-canonical the fees are as follows:  \r\n| Creator fee  | Protocol fee  | LP fee  | Total fee  |  \r\n| --- | --- | --- | --- |  \r\n| 0%  | 0.05%  | 0.25%  | 0.3%  |  \r\nNote that none of the pump.fun frontend services (the pump.fun web app, pump.fun/advanced, and the pump.fun mobile app*) charge any fees in addition to those above. If you access the pump.fun platform or smart contracts via another interface or platform, you may incur additional fees charged by those interfaces or platforms.\r\n*Pump.fun is modifying some of its fees for some mobile users. Some users may experience fee increases of up to .1% on certain transactions. These additional fees may be paid to coin creators, or coin fee owners if there has been a community take over with respect to that coin, or may be paid back to the user or the referrer of the user. The Creator Fee portion of the fees may also be paid to charities, if the token creator opts into this feature. See our [charitable token terms](https://pump.fun/docs/charitycoins) for additional information.\r\nThese fees may not be separately stated in the total transaction cost. These fees do not include fees charged by third parties which the pump.fun platform does not control, such as fees charged by wallet software or fees charged by the blockchain network (i.e. “gas” fees). The fees applicable to any transaction are determined pump.fun smart contracts, and although these fees are displayed by the pump.fun web or mobile app as accurately as possible, there is no guarantee that the transaction fee(s) listed in the web or mobile app will exactly match those charged by the smart contract. The pump.fun platform may change these fees at any time, without notice.\r\n",
+      "snapshot_sha256": "fcd86b5bf35097019744a940d705ec208fa4b276cfc730cad1a3e6314950aa42",
+      "context_sha256": "7d4dbb4273ffb7a79388ea57749ec01ca38afcf26c93e2e189986a111b28fb84"
+    },
+    "announcement": {
+      "block_id": "920bb0a8a7c5c6a4bb9dc3c70e2c7959afe687413f298880a950036e1a13cec7",
+      "path": "_official/fees_revenue/fees-revenue-april-28-announcement-fedc1699/docs/april-28-announcement.md",
+      "source_url": "https://pump.fun/docs/april-28-announcement",
+      "start_line": 24,
+      "end_line": 36,
+      "text": "# April 28, 2026 Announcement\r\nThis announcement is provided for informational purposes only and does not constitute an offer to sell, or the solicitation of an offer to buy, any security or other financial instrument in the United States or in any other jurisdiction. This communication is not directed at, or intended for use by, persons in the United Kingdom and the $PUMP token is not intended to be used or held by persons in the United Kingdom. Nothing in this announcement is investment, legal, tax, or other professional advice, and you should not rely on any statement herein as the basis for any investment decision.\r\n$PUMP does not represent equity, a debt instrument, or any right to revenues, profits, dividends, distributions, or any other cash flow. $PUMP is not redeemable for platform revenues, assets, or any other property. You should not purchase $PUMP with an expectation of profit, price appreciation, or any economic return based on any buyback activity or any efforts of the pump.fun development team or any affiliate.\r\nAny discussion of token purchases or a “buyback program” is intended to describe a contemplated process and/or certain smart contract functionality and does not create any obligation, commitment, or undertaking to purchase $PUMP, except to the extent that purchases, if any, are executed automatically by smart contract code deployed on-chain prior to April 28, 2026 (UTC). Smart contracts and related infrastructure are experimental and may fail, contain vulnerabilities, be exploited, or be affected by network conditions, forks, censorship, outages, or other events. These risks could prevent, delay, suspend, or alter any purchases and could result in losses.\r\nThe purchases of the $PUMP token contemplated herein may be effectuated by third parties. References to directing “approximately 50% of platform revenue” toward purchases are estimates provided for general informational purposes.\r\nAny purchases may affect the market price, volatility, and liquidity of $PUMP, including by increasing demand at particular times, and could cause the market price to be higher (or volatility to be lower) than the price (or volatility) that otherwise might exist. Pump.fun, and its affiliated entities do not operate or control secondary trading venues, liquidity pools, or third-party markets where $PUMP may trade, and make no representations regarding liquidity, pricing, or execution quality on any venue.\r\nThe pump.fun development team and/or affiliated persons may hold $PUMP and may purchase or sell $PUMP for their own accounts from time to time, including before, during, or after any program-related activity, and may benefit from price movements. Such persons are under no obligation to conduct any purchases or to support any market for $PUMP.\r\nThis announcement may contain forward-looking statements, which are inherently uncertain and subject to change. Actual outcomes may differ materially. We undertake no obligation to update any statement, except as required by law. No purchaser, holder, or seller should rely on any past, present, or contemplated purchases as an indication that purchases will occur at any time, in any amount, or at any price.\r\nNothing in this announcement is intended to waive compliance with applicable law or to limit any rights that cannot be waived as a matter of law.\r\nWe value your privacy\r\nThis site uses cookies to improve your browsing experience, analyze site traffic, and show personalized content.\r\nReject allCustomize\r\nAccept all\r\n",
+      "snapshot_sha256": "dfd1b54d90758f9ea5ab30afc5a7ecd8fb0f97bf0eef50c611b7e78bac296a22",
+      "context_sha256": "e3522bfbdc4252e0044a4414acbf4c5ff11a52e6132d34443818f5a6aa8ca85d"
+    },
+    "token": {
+      "block_id": "ec66e1ba1c1158988ba1b3b7fba58d76c8f7b111716d6dee3bd6d0bef9a2c8dd",
+      "path": "_official/fees_revenue/fees-revenue-pump-token-ead47f6d/pump-token.md",
+      "source_url": "https://pump.fun/pump-token",
+      "start_line": 102,
+      "end_line": 122,
+      "text": "## Why we built $PUMP\r\nFrom the fastest-growing launchpad in history to a network for instant trading & attention.\r\nSince launching in January 2024, Pump.fun set out to become a household name, letting anyone, anywhere create and trade tokens.\r\nPump.fun quickly became the fastest-growing company in history, reaching $100M, $300M, and $500M in revenue faster than any other company in the world. But that was just the beginning.\r\nTo unlock further growth, we launched $PUMP\r\n12 min\r\nToken sale sellout time\r\nJan 2024\r\nPump.fun launched\r\n[Trade $PUMP](https://pump.fun/coin/pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn)Share\r\nMethodology\r\nFrom 24 Oct 2025, “Revenue” includes all Pump.fun bonding curve, PumpSwap, and Terminal revenue (Solana, Base, Ethereum L1, BNB) net of referral fees and cash backs, exclusive of Mayhem Mode. As of 28 Apr 2026, 50% of revenue is programmatically locked and allocated to be burned for one year.\r\nBurn addresses[99mRw3…pm4F3c](https://solscan.io/account/99mRw3EzdJZWEUjgp1nrU4WeHsukUBjbh7gYE7pm4F3c)[9jHrTC…6KVCXM](https://solscan.io/account/9jHrTCwpDANHLNQz5cem6XLUBM8KiTWKe766Br6KVCXM)\r\nDisclaimer\r\nThe $PUMP token does not represent a right to revenues or any other distribution. Any references to token purchases are for informational purposes only, and only describe historical activity. This information should not be understood as a commitment to future token purchases for any reason, except as deterministically programmed prior to April 29, 2026. Any purchases may have the effect of preventing or retarding a decline in the market price of tokens and may stabilize, maintain or otherwise affect the market price of the tokens. As a result, the market price of the tokens may be higher than the price that otherwise might exist. Entities affiliated with the pump platform may purchase or sell tokens from time to time, but are not under no obligation to do so. If any purchases occur in the future, any such activity may be initiated, suspended, modified, or discontinued at any time, with or without notice, except as deterministically programmed prior to April 29, 2026. No token purchaser, holder or seller should rely on past purchases as an indication of future token purchases.\r\n![Playful 3D scene of a smiling green character running with meme-inspired figures like a Shiba Inu and hippo across a sunny grassy hill](https://pump.fun/dialog-clickwrap-cover.webp?dpl=dpl_EazqamMKzAX1cg3yTiXYuL8piCoj)\r\nWelcome to Pump.\r\nPump lets anyone create coins, giving everyone equal access to buy and sell from the start. Prices can move quickly, so trade carefully.\r\nContinue\r\nBy clicking this button, you agree to the [Terms and Conditions](https://pump.fun/docs/terms-and-conditions), [Privacy Policy](https://pump.fun/docs/privacy-policy), and certify that you are over 18 years old.\r\n0\r\n",
+      "snapshot_sha256": "825c31d7cd599c62c74b4cae0ff9ef71d0541e9e4f7329089ea45db6655ad444",
+      "context_sha256": "d7f6b05906563c203a6e5e8d1f8693c7ef0482a779426f4409f427e6c1a09e2c"
+    },
+    "hypothetical": {
+      "block_id": "1551a0a31d0d7673e01c4c6e92cc1979b0d2b75eb48fd73220ef1ceec3cad1cc",
+      "path": "_official/fees_revenue/fees-revenue-pump-token-ead47f6d/pump-token.md",
+      "source_url": "https://pump.fun/pump-token",
+      "start_line": 54,
+      "end_line": 69,
+      "text": "### Earnings to valuation\r\nHypothetical\r\nSee how protocol revenue measures up against $PUMP’s circulating valuation, with allocation fixed at 50%.\r\nMonthly protocol revenue$30M\r\nAssumed circulating market cap$733.5M\r\nAllocated to buyback50%\r\nRevenue multiplemarket cap ÷ annual revenue\r\n2.0x\r\ncirculating market cap measured against annual revenue\r\n$360.0M\r\nAnnual revenue\r\n$0.001836\r\n$PUMP price\r\n24.5%\r\nBuyback yield on mkt cap\r\nIllustrative only. Market cap uses circulating supply; yields use annualized revenue. Not a forecast or financial advice.\r\n",
+      "snapshot_sha256": "825c31d7cd599c62c74b4cae0ff9ef71d0541e9e4f7329089ea45db6655ad444",
+      "context_sha256": "b423aae702c771c96620e43387b5eae62b9e46c6c90d6f995b19e16a93b0e34c"
+    },
+    "clickwrap": {
+      "block_id": "e17b56c20b4bc048d58330b79ed99c5d94ecdabee4e5d38c1eb033167016f278",
+      "path": "_official/tokenomics/tokenomics-pumpcmxqmfrsakq5r49wcjnrayyrqmxz6ae8h7h9dfn-1f644355/coin/pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn.md",
+      "source_url": "https://pump.fun/coin/pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+      "start_line": 8,
+      "end_line": 15,
+      "text": "# Pump (PUMP) Price, Chart & Market Cap | Pump\r\n\r\n![Playful 3D scene of a smiling green character running with meme-inspired figures like a Shiba Inu and hippo across a sunny grassy hill](https://pump.fun/dialog-clickwrap-cover.webp?dpl=dpl_EazqamMKzAX1cg3yTiXYuL8piCoj)\r\nWelcome to Pump.\r\nPump lets anyone create coins, giving everyone equal access to buy and sell from the start. Prices can move quickly, so trade carefully.\r\nContinue\r\nBy clicking this button, you agree to the [Terms and Conditions](https://pump.fun/docs/terms-and-conditions), [Privacy Policy](https://pump.fun/docs/privacy-policy), and certify that you are over 18 years old.\r\nPump (PUMP) Price, Chart & Market Cap | Pump\r\n",
+      "snapshot_sha256": "5c49498533ee9a149fff6a282ab0da2d88ae0df29483a369313f441dd80441b6",
+      "context_sha256": "6c1be469893e7d748bf88c9f7de0015a4257175a6be8fc8131a3c2d566acd585"
+    },
+    "intro": {
+      "block_id": "e81fdbc21a87d83d543debfffc5d0cee7d6c470367a8375c4a8c9019a2143d11",
+      "path": "docs/BREAKING_FEE_RECIPIENT.md",
+      "source_url": null,
+      "start_line": 4,
+      "end_line": 7,
+      "text": "# Program Upgrade\n\nHi. We will be doing a breaking program upgrade on April 28th, 16:00 UTC, to both the pump bonding curve program and the pump swap amm program. In order to make sure your integrations do not break please see the instructions below:\n\n",
+      "snapshot_sha256": "f810fa526bab4720100fff4f8b6c2f520430287737ec43cb65e13be639bd4057",
+      "context_sha256": "828f76eaed65f8b1eb7dbfd0034a127fb642cdf497d9c8b631b6788e0e802fe9"
+    },
+    "recipients": {
+      "block_id": "9ff1734e3b89f0250a13042392ccb666456e5cac05bbef46cfe53cfd6b97b07f",
+      "path": "docs/BREAKING_FEE_RECIPIENT.md",
+      "source_url": null,
+      "start_line": 8,
+      "end_line": 20,
+      "text": "## These are 8 new fee recipients ( common for both programs )\n\n```text\n5YxQFdt3Tr9zJLvkFccqXVUwhdTWJQc1fFg2YPbxvxeD\n9M4giFFMxmFGXtc3feFzRai56WbBqehoSeRE5GK7gf7\nGXPFM2caqTtQYC2cJ5yJRi9VDkpsYZXzYdwYpGnLmtDL\n3BpXnfJaUTiwXnJNe7Ej1rcbzqTTQUvLShZaWazebsVR\n5cjcW9wExnJJiqgLjq7DEG75Pm6JBgE1hNv4B2vHXUW6\nEHAAiTxcdDwQ3U4bU6YcMsQGaekdzLS3B5SmYo46kJtL\n5eHhjP8JaYkz83CWwvGU2uMUXefd3AazWGx4gpcuEEYD\nA7hAgCzFw14fejgCp387JUJRMNyz4j89JKnhtKU8piqW\n```\n\n",
+      "snapshot_sha256": "f810fa526bab4720100fff4f8b6c2f520430287737ec43cb65e13be639bd4057",
+      "context_sha256": "cd5770bdd6d5574d411be1ba8b38da6c8e4d3e451f5a5e4997e446b577f5c0f9"
+    },
+    "accounts": {
+      "block_id": "afdfbfa2e1a40063486fe8ad55ddddb56eeb2e22a7a8a57b00a40b762a44a211",
+      "path": "docs/BREAKING_FEE_RECIPIENT.md",
+      "source_url": null,
+      "start_line": 28,
+      "end_line": 36,
+      "text": "## Bonding Curve\n\n- Add any one of the 8 new fee recipients at the end of the buy and sell instructions.\n- This new account should be added AFTER the bonding-curve-v2 account for both buys and sells.\n- Account needs to be mutable\n- Buy instructions should have 18 accounts in total\n- Sell instruction should have 16 accounts for non cashback coins\n- Sell instruction should have 17 accounts for cashback coins\n\n",
+      "snapshot_sha256": "f810fa526bab4720100fff4f8b6c2f520430287737ec43cb65e13be639bd4057",
+      "context_sha256": "f76e45660b3504b09b24f301e12a425d099a7dd902da02b9d8f04fad34e41c78"
+    },
+    "sdk_intro": {
+      "block_id": "c2c83d9c7a2152a56a6f2a356b53d2e5c673825c4597bf1f3ef5e39c053bf6f4",
+      "path": "docs/CPI_README.md",
+      "source_url": null,
+      "start_line": 4,
+      "end_line": 8,
+      "text": "# CPI into pump from your own Anchor program\n\nFor CPI into pump's `buy_v2`, `sell_v2`, or any other pump instruction,\nuse `pump_rust_client` and follow the example below.\n\n",
+      "snapshot_sha256": "cd0fd4a06401486424209980e28120cd2046d767d7daf3059aebc49eae7ad25b",
+      "context_sha256": "da6dd7755e48099b49763189a33f6d06b58044b0e693c4fd7924359fbbfb9175"
+    },
+    "wrapper": {
+      "block_id": "f3e2f75f56bac29bdf0d02d094d55d6039dab2ce778378c02e7832c381835230",
+      "path": "docs/CPI_README.md",
+      "source_url": null,
+      "start_line": 9,
+      "end_line": 53,
+      "text": "## Wrapper program\n\nYour wrapper's `Accounts` struct must mirror pump's `BuyV2` account order\nexactly:\n\n```rust\nuse anchor_lang::prelude::*;\n\ndeclare_id!(\"7enkT8uLQrwKYSRMrazjr1YZPT7unToAtwdLMWa2QLYY\");\ndeclare_program!(pump);\n\n#[program]\npub mod example_cpi_program {\n    use super::*;\n\n    pub fn buy_v2(ctx: Context<BuyV2>, amount: u64, max_sol_cost: u64) -> Result<()> {\n        pump::cpi::buy_v2(\n            CpiContext::new(\n                ctx.accounts.program.to_account_info(),\n                pump::cpi::accounts::BuyV2 {\n                    global: ctx.accounts.global.to_account_info(),\n                    // ... all pump BuyV2 accounts, same order ...\n                    program: ctx.accounts.program.to_account_info(),\n                },\n            ),\n            amount,\n            max_sol_cost,\n        )?;\n        Ok(())\n    }\n}\n\n#[derive(Accounts)]\npub struct BuyV2<'info> {\n    /// CHECK: passed straight to pump\n    pub global: UncheckedAccount<'info>,\n    // ... fields in the same order as pump::cpi::accounts::BuyV2 ...\n    #[account(mut)]\n    pub user: Signer<'info>,\n    // ...\n    /// CHECK: pump program; CPI target\n    pub program: UncheckedAccount<'info>,\n}\n```\n\n",
+      "snapshot_sha256": "cd0fd4a06401486424209980e28120cd2046d767d7daf3059aebc49eae7ad25b",
+      "context_sha256": "ab8ec5f20e29c5afaedfa6f8e43e67dec9048ec4dc56a1678293be9af953a30d"
+    },
+    "decoding": {
+      "block_id": "b0a2dd349d6a7fdfcf29daf0abd84c3b9f821085f4586e71dd137e793e323a86",
+      "path": "docs/CPI_README.md",
+      "source_url": null,
+      "start_line": 54,
+      "end_line": 82,
+      "text": "## Typed account decoding\n\nIf you want `Account<'info, BondingCurve>` (or any other deserialized pump\naccount type) instead of `UncheckedAccount`, import the type from\n`pump_rust_client::state`, **not** from `declare_program!(pump)`'s generated\n`pump::accounts` module:\n\n```rust\nuse pump_rust_client::state::BondingCurve;\n\n#[derive(Accounts)]\npub struct BuyV2<'info> {\n    // ...\n    pub bonding_curve: Account<'info, BondingCurve>,\n    // ...\n}\n```\n\n`pump_rust_client::state` types are wrapped in `AccountWrapper`, which\nzero-pads short buffers so older on-chain accounts (e.g. pre-existing\n`BondingCurve`s) still deserialize. The raw IDL type does not, and will fail\non legacy accounts. The same applies to the other re-exports under\n`pump_rust_client::state` and its `pump_amm` / `pump_agent_payments`\nsubmodules (`Global`, `FeeConfig`, `pump_amm::Pool`, …).\n\nYou're also welcome to look into the source code (`src/account_wrapper.rs`)\nto see how on-chain accounts like `BondingCurve` are deserialized without\nerrors by padding short buffers with extra zeros.\n\n",
+      "snapshot_sha256": "cd0fd4a06401486424209980e28120cd2046d767d7daf3059aebc49eae7ad25b",
+      "context_sha256": "6738d5b7bfe8440d493bcd430990acf7fb73681d20d5aedc706b5380af136f74"
+    },
+    "idl": {
+      "block_id": "5c3bb88a414cde9db9ea050acb6da1a71860a47b13b29b9d0d2b5960ca7451cc",
+      "path": "docs/CPI_README.md",
+      "source_url": null,
+      "start_line": 83,
+      "end_line": 100,
+      "text": "## `idl-build` feature\n\n`pump-rust-client` exposes an `idl-build` feature that forwards to the\nunderlying anchor IDL build machinery. When your wrapper program builds its\nown IDL (e.g. via `anchor build`), wire it up in your program's `Cargo.toml`\nso pump's types are included in your IDL:\n\n```toml\n[features]\nidl-build = [\n    \"anchor-lang/idl-build\",\n    \"anchor-spl/idl-build\",\n    \"pump-rust-client/idl-build\",\n]\n\n[dependencies]\npump-rust-client = { version = \"...\", path = \"...\" }\n```\n",
+      "snapshot_sha256": "cd0fd4a06401486424209980e28120cd2046d767d7daf3059aebc49eae7ad25b",
+      "context_sha256": "7f46ba47a0d1048d6e47c021a1604f6964a04fc751e1796478cf4f22a6d15d7d"
+    },
+    "image": {
+      "block_id": "eb4dd0e047c869388cf8f457f62873652344cf63de7696cf26ad5f299e60961a",
+      "path": "docs/FEE_PROGRAM_README.md",
+      "source_url": null,
+      "start_line": 157,
+      "end_line": 211,
+      "text": "   creatorFeeBps: globalConfig.coinCreatorFeeBasisPoints,\n };\n}\n\n/// rust reference: pump-fees::get_fees()\nfunction getFees({\n feeConfig,\n isPumpPool,\n marketCap,\n}: {\n feeConfig: FeeConfig;\n isPumpPool: boolean;\n marketCap: BN;\n tradeSize: BN;\n}): Fees {\n if (isPumpPool) {\n   return calculateFeeTier({\n     feeTiers: feeConfig.feeTiers,\n     marketCap,\n   });\n } else {\n   return feeConfig.flatFees;\n }\n}\n\n/// rust reference: pump-fees-math::calculate_fee_tier()\nexport function calculateFeeTier({\n feeTiers,\n marketCap,\n}: {\n feeTiers: FeeTier[];\n marketCap: BN;\n}): Fees {\n const firstTier = feeTiers[0];\n\n if (marketCap.lt(firstTier.marketCapLamportsThreshold)) {\n   return firstTier.fees;\n }\n\n for (const tier of feeTiers.slice().reverse()) {\n   if (marketCap.gte(tier.marketCapLamportsThreshold)) {\n     return tier.fees;\n   }\n }\n\n return firstTier.fees;\n}\n```\n\nWe will use the following fee tiers starting from Monday:\n![Fee Tiers](fees.png)\n\nIn order to avoid possible issues created by the new fee structure, until you make sure it's implemented correctly, you can increase the slippage tolerance on buy / sell instructions as a temporary mitigation.\n\nIf you implement the fee logic correctly, any future change to the fee tiers structure above should not affect your code.\n",
+      "snapshot_sha256": "a858a7ce2c5a5233db4f91deca78239984b81ff5884d7ec680fa06aba9e6cf44",
+      "context_sha256": "a31dc3728bbf5062ec7e99fb685d70ccc3e1892bf0e4912700896640bd5ed8e6"
+    }
+  },
+  "cases": [
+    {
+      "id": "B01",
+      "title": "Useful fee overview",
+      "lane": "demo",
+      "sources": [
+        "fees",
+        "mobile"
+      ],
+      "must_capture": [
+        "The saved fee page lists coin creation at 0 SOL / 0 USDC and graduation to PumpSwap at 0.015 SOL.",
+        "Bonding-curve fees for SOL and USDC tokens are creator 0.300%, protocol 0.95%, LP 0%, total 1.25%.",
+        "For non-canonical PumpSwap pools: creator 0%, protocol 0.05%, LP 0.25%, total 0.3%.",
+        "Creator, protocol and LP are distinct fee recipients; canonical PumpSwap pools use a market-cap-dependent schedule."
+      ],
+      "must_not_claim": [
+        "All fees accrue to $PUMP holders.",
+        "The same fixed fee applies to every pool.",
+        "These saved values have been verified live today."
+      ],
+      "behavior": [
+        "Keep fee types and pool conditions together; use a compact table instead of one paragraph per number.",
+        "Retain the saved page date (20 May 2026) and relevant USDC effective-date wording; do not silently resolve their date mismatch."
+      ],
+      "anchors": [
+        {
+          "source": "fees",
+          "quote": "| Create a coin  | 0 SOL / 0 USDC  |"
+        },
+        {
+          "source": "fees",
+          "quote": "| 0.300%  | 0.95%  | 0%  | 1.25%  |"
+        },
+        {
+          "source": "mobile",
+          "quote": "| 0%  | 0.05%  | 0.25%  | 0.3%  |"
+        }
+      ],
+      "phase_a_baseline": "Saved run captured useful fees, but coverage was fragmented and publication incomplete; no end-to-end pass yet."
+    },
+    {
+      "id": "B02",
+      "title": "Leading decimal and mobile exception",
+      "lane": "demo",
+      "sources": [
+        "mobile"
+      ],
+      "must_capture": [
+        "Some mobile users may see increases up to 0.1% on certain transactions; preserve the original .1% source literal and conditional wording."
+      ],
+      "must_not_claim": [
+        "The increase is 1%.",
+        "All mobile transactions incur an additional 0.1%."
+      ],
+      "behavior": [
+        "Accept equivalent .1 and 0.1 numeric values without a provider repair; distinguish both from 1."
+      ],
+      "anchors": [
+        {
+          "source": "mobile",
+          "quote": "Some users may experience fee increases of up to .1% on certain transactions."
+        }
+      ],
+      "phase_a_baseline": "Observed failure: three false rejections, reproduced offline in Phase A."
+    },
+    {
+      "id": "B03",
+      "title": "Fee tier with six quantities",
+      "lane": "demo",
+      "sources": [
+        "fees"
+      ],
+      "must_capture": [
+        "For canonical SOL pools, the displayed 0–420 SOL market-cap tier has creator 0.300%, protocol 0.930%, LP 0.020%, total 1.250%."
+      ],
+      "must_not_claim": [
+        "This tier applies to every token and pool.",
+        "A boundary is strictly inclusive or exclusive when the displayed range does not establish that."
+      ],
+      "behavior": [
+        "Preserve both bounds and all four fee components, using a table row or linked claims; no silent quantity truncation.",
+        "Passing does not require a particular JSON representation or a single six-quantity claim."
+      ],
+      "anchors": [
+        {
+          "source": "fees",
+          "quote": "| 0 – 420 SOL  | 0.300%  | 0.930%  | 0.020%  | 1.250%  |"
+        }
+      ],
+      "phase_a_baseline": "Observed failure: hidden four-quantity cap rejected the saved six-quantity row."
+    },
+    {
+      "id": "B04",
+      "title": "Protocol economics versus token rights",
+      "lane": "demo",
+      "sources": [
+        "announcement",
+        "token"
+      ],
+      "must_capture": [
+        "$PUMP does not represent a right to protocol revenues or distributions.",
+        "The April 28 announcement describes approximately 50% toward purchases as an estimate, not a holder payout.",
+        "The token methodology separately says that as of 28 Apr 2026, 50% of revenue is locked and allocated to be burned for one year.",
+        "Keep programmed-purchase exceptions tied to their sources: announcement prior to April 28, token page prior to April 29, 2026; do not invent a single reconciled cutoff."
+      ],
+      "must_not_claim": [
+        "Token holders receive a 50% dividend.",
+        "Buybacks guarantee returns.",
+        "Saved wording proves current on-chain execution."
+      ],
+      "behavior": [
+        "Show $PUMP under Tokens and Pump.fun under Protocols, with related economics linked and attributed.",
+        "Surface the source/date discrepancy once if discussing future purchases; do not block the supported no-entitlement answer."
+      ],
+      "anchors": [
+        {
+          "source": "token",
+          "quote": "The $PUMP token does not represent a right to revenues or any other distribution."
+        },
+        {
+          "source": "token",
+          "quote": "As of 28 Apr 2026, 50% of revenue is programmatically locked and allocated to be burned for one year."
+        },
+        {
+          "source": "announcement",
+          "quote": "prior to April 28, 2026 (UTC)."
+        }
+      ],
+      "phase_a_baseline": "Rights restrictions and date context are present in saved research; integrated demo output remains untested."
+    },
+    {
+      "id": "B05",
+      "title": "Illustrative calculator is not live market data",
+      "lane": "demo",
+      "sources": [
+        "hypothetical"
+      ],
+      "must_capture": [
+        "The earnings-to-valuation widget is hypothetical and illustrative; its revenue, valuation, price and yield are assumptions/example outputs."
+      ],
+      "must_not_claim": [
+        "Current monthly revenue is $30M.",
+        "Current market cap is $733.5M.",
+        "Current token price is $0.001836.",
+        "Holders earn 24.5%."
+      ],
+      "behavior": [
+        "Exclude illustrative numbers from live metric cards and ordinary research conclusions.",
+        "A current-price question states that this evidence cannot supply a current price; it does not rerun extraction."
+      ],
+      "anchors": [
+        {
+          "source": "hypothetical",
+          "quote": "Hypothetical"
+        },
+        {
+          "source": "hypothetical",
+          "quote": "Illustrative only. Market cap uses circulating supply; yields use annualized revenue."
+        }
+      ],
+      "phase_a_baseline": "New explicit acceptance condition from saved source; no scored baseline execution in Phase B."
+    },
+    {
+      "id": "B06",
+      "title": "Repair a label without rewriting a fact",
+      "lane": "regression",
+      "sources": [
+        "announcement"
+      ],
+      "must_capture": [
+        "Third parties may execute contemplated token purchases; approximately 50% is described as an estimate."
+      ],
+      "must_not_claim": [
+        "The statement is unsupported solely because revenue-model.1 was selected alongside revenue-model.2."
+      ],
+      "behavior": [
+        "On the saved label-only rejection, retain the supported statement and citations, correct/remove the irrelevant tag, and do not rerun extraction or semantic checking solely for that tag.",
+        "Empty question tags are acceptable when a useful claim does not fit the profile."
+      ],
+      "anchors": [
+        {
+          "source": "announcement",
+          "quote": "References to directing “approximately 50% of platform revenue” toward purchases are estimates provided for general informational purposes."
+        }
+      ],
+      "phase_a_baseline": "Observed failure: supported statement entered full extraction/check repair for question tagging."
+    },
+    {
+      "id": "B07",
+      "title": "SDK naming stays a component relationship",
+      "lane": "regression",
+      "sources": [
+        "sdk_intro",
+        "idl"
+      ],
+      "must_capture": [
+        "The documented SDK namespace pump_rust_client and package pump-rust-client are related names in this CPI integration context; the package exposes idl-build."
+      ],
+      "must_not_claim": [
+        "pump_rust_client is another protocol or token.",
+        "Similar spelling alone authorizes merging arbitrary entities."
+      ],
+      "behavior": [
+        "Use the supplied document context for the relationship; retain literal names in references.",
+        "Exclude this developer setup detail from the general demo summary unless explicitly asked."
+      ],
+      "anchors": [
+        {
+          "source": "sdk_intro",
+          "quote": "use `pump_rust_client` and follow the example below."
+        },
+        {
+          "source": "idl",
+          "quote": "`pump-rust-client` exposes an `idl-build` feature"
+        }
+      ],
+      "phase_a_baseline": "Observed failure: exact subject spelling rejected valid SDK context."
+    },
+    {
+      "id": "B08",
+      "title": "Resolve a local section reference",
+      "lane": "regression",
+      "sources": [
+        "intro",
+        "recipients"
+      ],
+      "must_capture": [
+        "The eight new fee recipients are common to the pump bonding curve program and pump swap AMM program identified in the introduction."
+      ],
+      "must_not_claim": [
+        "These are eight recipients of Solana base-chain fees.",
+        "These are token-holder dividend recipients."
+      ],
+      "behavior": [
+        "Retain both the introduction and recipient section as evidence; do not require every short section to repeat the full subject name.",
+        "Do not infer a year from April 28th alone."
+      ],
+      "anchors": [
+        {
+          "source": "intro",
+          "quote": "both the pump bonding curve program and the pump swap amm program."
+        },
+        {
+          "source": "recipients",
+          "quote": "## These are 8 new fee recipients ( common for both programs )"
+        }
+      ],
+      "phase_a_baseline": "Observed failure: subject/context fragmentation caused repeated repairs."
+    },
+    {
+      "id": "B09",
+      "title": "Keep the useful semantic check",
+      "lane": "regression",
+      "sources": [
+        "decoding"
+      ],
+      "must_capture": [
+        "Wrapped state types zero-pad short buffers so older accounts deserialize; the raw IDL type does not and fails on legacy accounts."
+      ],
+      "must_not_claim": [
+        "The wrapped state re-exports fail on legacy accounts just like the raw IDL type."
+      ],
+      "behavior": [
+        "Reject the reversed-meaning candidate even if it contains an exact source quote.",
+        "Retain the supported distinction; citations alone do not establish correct meaning."
+      ],
+      "anchors": [
+        {
+          "source": "decoding",
+          "quote": "zero-pads short buffers so older on-chain accounts"
+        },
+        {
+          "source": "decoding",
+          "quote": "The raw IDL type does not, and will fail\non legacy accounts."
+        }
+      ],
+      "phase_a_baseline": "Useful check: the saved support reviewer caught this real meaning error."
+    },
+    {
+      "id": "B10",
+      "title": "Repair must not create duplicates",
+      "lane": "regression",
+      "sources": [
+        "wrapper"
+      ],
+      "must_capture": [
+        "A wrapper Accounts struct must match the Pump BuyV2 account order exactly."
+      ],
+      "must_not_claim": [],
+      "behavior": [
+        "Two paraphrases of this same requirement yield one displayed research point with retained provenance.",
+        "Repair only the affected candidate; missing repair_of must not turn an unrelated new proposal into a fresh repair branch.",
+        "Do not erase genuinely distinct conditions while deduplicating."
+      ],
+      "anchors": [
+        {
+          "source": "wrapper",
+          "quote": "Your wrapper's `Accounts` struct must mirror pump's `BuyV2` account order\nexactly:"
+        }
+      ],
+      "phase_a_baseline": "Observed failure: repeated account-order claims accepted in batch 8."
+    },
+    {
+      "id": "B11",
+      "title": "Fix a citation without inventing continuity",
+      "lane": "regression",
+      "sources": [
+        "intro",
+        "accounts"
+      ],
+      "must_capture": [
+        "Bonding-curve buy instructions require 18 accounts; sells require 16 for non-cashback coins and 17 for cashback coins in this upgrade document."
+      ],
+      "must_not_claim": [
+        "All sells use 16 accounts."
+      ],
+      "behavior": [
+        "A heading plus later bullets with omitted intervening bullets is not an exact contiguous quote.",
+        "Use separate exact references or the full contiguous passage; preserve claim identity during citation repair."
+      ],
+      "anchors": [
+        {
+          "source": "accounts",
+          "quote": "- Buy instructions should have 18 accounts in total\n- Sell instruction should have 16 accounts for non cashback coins\n- Sell instruction should have 17 accounts for cashback coins"
+        }
+      ],
+      "phase_a_baseline": "Useful quote validation: saved noncontiguous citation correctly rejected; repair scope needs improvement."
+    },
+    {
+      "id": "B12",
+      "title": "Local source ambiguity does not block the report",
+      "lane": "regression",
+      "sources": [
+        "token"
+      ],
+      "must_capture": [
+        "The source literally says not under no obligation; its obligation wording is ambiguous."
+      ],
+      "must_not_claim": [
+        "This double negative unambiguously means no obligation.",
+        "This double negative proves an enforceable purchase obligation."
+      ],
+      "behavior": [
+        "Keep literal provenance and one localized ambiguity; omit a definitive obligation claim.",
+        "Continue answering supported fee and token-rights questions without a global insufficient-evidence refusal."
+      ],
+      "anchors": [
+        {
+          "source": "token",
+          "quote": "but are not under no obligation to do so."
+        }
+      ],
+      "phase_a_baseline": "Useful check: saved reviewer caught silent normalization of a double negative."
+    },
+    {
+      "id": "B13",
+      "title": "Clickwrap is not token metrics",
+      "lane": "demo",
+      "sources": [
+        "clickwrap"
+      ],
+      "must_capture": [
+        "The saved trading-page text contains no usable price or market-cap observation."
+      ],
+      "must_not_claim": [
+        "The page title proves current price or market cap was collected."
+      ],
+      "behavior": [
+        "Do not use age certification, cookies or generic trade-risk copy as headline protocol research.",
+        "Keep a precise missing-input note for market metrics; it must not prevent answers supported by other sources."
+      ],
+      "anchors": [
+        {
+          "source": "clickwrap",
+          "quote": "certify that you are over 18 years old."
+        }
+      ],
+      "phase_a_baseline": "Observed failure: four low-value clickwrap claims were accepted in the saved run."
+    },
+    {
+      "id": "B14",
+      "title": "Image-only evidence stays an explicit gap",
+      "lane": "regression",
+      "sources": [
+        "image"
+      ],
+      "must_capture": [
+        "The fee-tier table is referenced as fees.png; its numeric rows are not present in the supplied Markdown block."
+      ],
+      "must_not_claim": [
+        "The linked image proves a specific fee tier without reading its contents."
+      ],
+      "behavior": [
+        "State that this particular image table was not captured as text; no automatic OCR or web expansion in this phase.",
+        "Do not report all fee information missing when other supplied pages contain usable text tables."
+      ],
+      "anchors": [
+        {
+          "source": "image",
+          "quote": "![Fee Tiers](fees.png)"
+        }
+      ],
+      "phase_a_baseline": "Source coverage gap confirmed in Phase A; image extraction remains deferred for this demo."
+    }
+  ],
+  "scoring": "Meaning-based review against must_capture, must_not_claim and behavior; integrity checks are not quality scores."
+}

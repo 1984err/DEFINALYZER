@@ -311,6 +311,8 @@ def _fetch_json(url: str) -> dict[str, Any]:
 
 
 def _fetch_bytes(url: str) -> bytes:
+    from definalyzer.cancellation import check_cancelled
+    check_cancelled()
     request = Request(
         url,
         headers={
@@ -319,7 +321,9 @@ def _fetch_bytes(url: str) -> bytes:
         },
     )
     with urlopen(request, timeout=60) as response:
-        return response.read(MAX_ARCHIVE_BYTES + 1)
+        result = response.read(MAX_ARCHIVE_BYTES + 1)
+    check_cancelled()
+    return result
 
 
 def _load_manifest(path: Path) -> dict[str, Any] | None:

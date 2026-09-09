@@ -50,14 +50,15 @@ class HermesCliProvider:
         *,
         executable: str | Path | None = None,
         timeout_seconds: int = 900,
-        command_runner=subprocess.run,
+        command_runner=None,
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("Provider timeout must be positive.")
 
         self.executable = resolve_hermes_executable(executable)
         self.timeout_seconds = timeout_seconds
-        self._command_runner = command_runner
+        from .process_runner import run_provider_process
+        self._command_runner = command_runner or run_provider_process
 
     def generate(
         self,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from uuid import uuid4
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any, Mapping
 
 
 WORKSPACE_SCHEMA_VERSION = 1
-ENTITY_TYPES = {"protocol", "chain", "token"}
+ENTITY_TYPES = {"protocol", "chain", "token", "coin"}
 VERIFICATION_STATUSES = {
     "not_requested",
     "unsupported",
@@ -95,6 +96,7 @@ class ProjectWorkspace:
             "protocol": "Protocols",
             "chain": "Chains",
             "token": "Tokens",
+            "coin": "Coins",
         }[str(self.document["entity_type"])]
         return self.vault_root / folder / self.name
 
@@ -105,6 +107,10 @@ class ProjectWorkspace:
     @property
     def verification_page_path(self) -> Path:
         return self.verification_directory / "Index.md"
+
+    @property
+    def reports_directory(self) -> Path:
+        return self.vault_root / "Reports" / self.name
 
 
 class WorkspaceManager:
@@ -121,6 +127,7 @@ class WorkspaceManager:
             self.root / "vault" / "Tokens",
             self.root / "vault" / "Coins",
             self.root / "vault" / "Verification",
+            self.root / "vault" / "Reports",
             self.root / "vault" / "Analyst Reviews",
             self.root / "vault" / "Indexes",
         )
@@ -143,6 +150,7 @@ class WorkspaceManager:
         entity_type: str = "protocol",
         docs_url: str | None = None,
         verification_status: str = "not_requested",
+        subject_id: str | None = None,
     ) -> ProjectWorkspace:
         self.initialize()
         clean_name = name.strip()
@@ -150,7 +158,7 @@ class WorkspaceManager:
         _validate_project_name(clean_name)
         if entity_type not in ENTITY_TYPES:
             raise ValueError(
-                "Entity type must be protocol, chain, or token."
+                "Entity type must be protocol, chain, token, or coin."
             )
         if verification_status not in VERIFICATION_STATUSES:
             raise ValueError(
@@ -168,6 +176,7 @@ class WorkspaceManager:
         now = timestamp()
         document = {
             "schema_version": WORKSPACE_SCHEMA_VERSION,
+            "subject_id": subject_id or uuid4().hex,
             "slug": slug,
             "name": clean_name,
             "entity_type": entity_type,
@@ -194,6 +203,7 @@ class WorkspaceManager:
             workspace.evidence_directory,
             workspace.vault_entity_directory,
             workspace.verification_directory,
+            workspace.reports_directory,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -246,13 +256,15 @@ class WorkspaceManager:
         """Permanently remove one project and its unshared generated notes."""
 
         current = self.load_project(workspace.slug)
+        from .asset_identity import load_catalog
+        migrated = current.slug in load_catalog(self.root)["projects"]
         token_symbols = self._project_token_symbols(current)
         shared_symbols: set[str] = set()
         for other in self.list_projects():
             if (
                 other.slug != current.slug
-                and (other.document["entity_type"] == "chain")
-                == (current.document["entity_type"] == "chain")
+                and (other.document["entity_type"] in {"chain", "coin"})
+                == (current.document["entity_type"] in {"chain", "coin"})
             ):
                 shared_symbols.update(self._project_token_symbols(other))
 
@@ -262,6 +274,7 @@ class WorkspaceManager:
             current.registry_directory,
             current.vault_entity_directory,
             current.verification_directory,
+            current.reports_directory,
             current.vault_root / "Analyst Reviews" / current.name,
         ]
         shared_symbol_keys = {symbol.casefold() for symbol in shared_symbols}
@@ -271,9 +284,10 @@ class WorkspaceManager:
             if value.casefold() not in shared_symbol_keys
         ):
             asset_section = (
-                "Coins" if current.document["entity_type"] == "chain" else "Tokens"
+                "Coins" if current.document["entity_type"] in {"chain", "coin"} else "Tokens"
             )
-            targets.append(current.vault_root / asset_section / symbol)
+            if not migrated:
+                targets.append(current.vault_root / asset_section / symbol)
 
         removed: list[Path] = []
         for target in targets:
@@ -286,6 +300,9 @@ class WorkspaceManager:
                 shutil.rmtree(target)
             removed.append(target)
 
+        if migrated:
+            from .asset_identity import archive_project_context
+            archive_project_context(self.root, current.slug)
         self.refresh_vault_indexes()
         return tuple(removed)
 
@@ -321,6 +338,7 @@ class WorkspaceManager:
             (workspace.vault_root / "Tokens").resolve(),
             (workspace.vault_root / "Coins").resolve(),
             (workspace.vault_root / "Verification").resolve(),
+            (workspace.vault_root / "Reports").resolve(),
             (workspace.vault_root / "Analyst Reviews").resolve(),
         }
         if target.parent.resolve() not in allowed_parents:

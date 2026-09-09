@@ -192,6 +192,7 @@ class JsonRpcClient:
         return evidence
 
     def _post(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        from definalyzer.cancellation import check_cancelled
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         request = Request(
             self._rpc_url,
@@ -205,9 +206,11 @@ class JsonRpcClient:
         last_error: Exception | None = None
 
         for attempt in range(self.retries + 1):
+            check_cancelled()
             try:
                 with urlopen(request, timeout=self.timeout) as response:
                     response_body = response.read()
+                check_cancelled()
 
                 decoded = json.loads(response_body)
 

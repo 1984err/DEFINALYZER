@@ -944,6 +944,7 @@ def _normalize_research_links(
         "protocol": "Protocols",
         "chain": "Chains",
         "token": "Tokens",
+        "coin": "Coins",
     }.get(entity_type, "Protocols")
     pattern = re.compile(r"\[\[(?P<target>[^|\]\\]+)(?:\\?\|[^\]]+)?\]\]")
     for line in text.splitlines():

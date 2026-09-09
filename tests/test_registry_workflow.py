@@ -189,7 +189,7 @@ class RegistryWorkflowTests(unittest.TestCase):
 
         self.assertEqual(tokens, ())
 
-    def test_removes_stale_generated_placeholder_token_page(self):
+    def test_preserves_legacy_placeholder_file_during_registry_update(self):
         with tempfile.TemporaryDirectory() as directory:
             manager = WorkspaceManager(Path(directory) / "output")
             workspace = manager.create_project(name="No Token Protocol")
@@ -233,7 +233,7 @@ class RegistryWorkflowTests(unittest.TestCase):
 
             self.assertEqual(result.tokens, ())
             self.assertEqual(refreshed.tokens, ())
-            self.assertFalse(stale.exists())
+            self.assertTrue(stale.exists())
             self.assertNotIn(
                 "NOT DOCUMENTED",
                 protocol_index.read_text(encoding="utf-8"),
@@ -531,15 +531,17 @@ class RegistryWorkflowTests(unittest.TestCase):
 
         self.assertEqual({token.symbol for token in result.tokens}, {"AAVE", "GHO"})
         self.assertEqual(len(result.token_pages), 2)
-        self.assertIn("[[Tokens/AAVE/Index\\|AAVE]]", linked)
-        self.assertEqual(linked.count("[[Tokens/AAVE/Index\\|AAVE]]"), 1)
+        aave_id = next(row.asset_id for row in result.tokens if row.symbol == "AAVE")
+        gho_id = next(row.asset_id for row in result.tokens if row.symbol == "GHO")
+        self.assertIn(f"[[Tokens/aave--{aave_id}/Index\\|AAVE]]", linked)
+        self.assertEqual(linked.count(f"[[Tokens/aave--{aave_id}/Index\\|AAVE]]"), 1)
         self.assertIn("AAVE appears again", linked)
         self.assertNotIn("[[Tokens/AAVE/Index|AAVE]]", linked)
         self.assertNotIn("| Field | Value |   |", linked)
         self.assertIn("| Field | Value |", linked)
         self.assertNotIn("Tokens/USDC", linked)
         self.assertIn("testnet", networks_text)
-        self.assertIn("[[Tokens/GHO/Index|GHO]]", index_text)
+        self.assertIn(f"[[Tokens/gho--{gho_id}/Index|GHO (GHO)]]", index_text)
         self.assertEqual(
             {
                 record.name

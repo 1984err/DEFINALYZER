@@ -166,3 +166,19 @@ class CrawlerFallbackTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ScopeBoundaryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sitemap_candidates_cannot_escape_host_or_subsection_and_reference_is_retained(self):
+        class Seeder:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+            async def urls(self, domain, config):
+                return [{"url": url} for url in [
+                    "https://docs.example.test/product/api/admin",
+                    "https://docs.example.test/unrelated/start",
+                    "https://outside.test/product/start",
+                    "ftp://docs.example.test/product/start",
+                ]]
+        with patch("crawler.crawler.AsyncUrlSeeder", return_value=Seeder()):
+            urls = await discover_urls("docs.example.test", "*/product/*", seed_url="https://docs.example.test/product/")
+        self.assertEqual(urls, ["https://docs.example.test/product/api/admin"])

@@ -29,6 +29,17 @@ from definalyzer.providers import ProviderResponse
 from definalyzer.workspace import WorkspaceManager
 
 
+class ScopeFixture:
+    def __init__(self):
+        from tests.test_research_facts import FactFixture
+        self.facts = FactFixture()
+
+    def generate(self, prompt, **kwargs):
+        if prompt.startswith('Classify saved'):
+            return ProviderResponse('{"decisions": []}', "fixture", ())
+        return self.facts.generate(prompt, **kwargs)
+
+
 def answers(values):
     iterator = iter(values)
     return lambda prompt: next(iterator)
@@ -49,12 +60,12 @@ class UnifiedAppTests(unittest.TestCase):
             "*/docs/*",
         )
 
-    def test_crawl_pattern_uses_parent_for_landing_page_url(self):
+    def test_crawl_pattern_preserves_exact_page_url(self):
         self.assertEqual(
             _default_crawl_pattern(
                 "https://docs.pendle.finance/pendle-v2/Introduction"
             ),
-            "*/pendle-v2/*",
+            "https://docs.pendle.finance/pendle-v2/Introduction",
         )
 
     @patch("definalyzer.app.generate_evaluation_proposals")
@@ -426,7 +437,7 @@ class UnifiedAppTests(unittest.TestCase):
                         "",
                         "n",
                         "n",
-                        "21",
+                        "20",
                     ]
                 ),
                 print_fn=messages.append,
@@ -445,7 +456,7 @@ class UnifiedAppTests(unittest.TestCase):
             exit_code = main(
                 ["--workspace", str(root)],
                 input_fn=answers(
-                    ["1", "Example Chain", "2", "", "n", "n", "21"]
+                    ["1", "Example Chain", "2", "", "n", "n", "20"]
                 ),
                 print_fn=lambda message: None,
             )
@@ -463,7 +474,7 @@ class UnifiedAppTests(unittest.TestCase):
 
             exit_code = main(
                 ["--workspace", str(root)],
-                input_fn=answers(["18", "1", "Delete Me", "21"]),
+                input_fn=answers(["17", "1", "Delete Me", "20"]),
                 print_fn=messages.append,
             )
 
@@ -482,7 +493,7 @@ class UnifiedAppTests(unittest.TestCase):
             exit_code = main(
                 ["--workspace", str(Path(directory) / "output")],
                 input_fn=answers(
-                    ["1", "Guided Project", "", "", "n", "y", "21"]
+                    ["1", "Guided Project", "", "", "n", "y", "20"]
                 ),
             )
 
@@ -502,7 +513,7 @@ class UnifiedAppTests(unittest.TestCase):
             WorkspaceManager(root).create_project(name="Existing")
             exit_code = main(
                 ["--workspace", str(root)],
-                input_fn=answers(["2", "1", "n", "21"]),
+                input_fn=answers(["2", "1", "n", "20"]),
                 print_fn=lambda message: None,
             )
 
@@ -523,7 +534,7 @@ class UnifiedAppTests(unittest.TestCase):
             WorkspaceManager(root).create_project(name="No Fallthrough")
             exit_code = main(
                 ["--workspace", str(root)],
-                input_fn=answers(["7", "1", "n", "21"]),
+                input_fn=answers(["7", "1", "n", "20"]),
                 print_fn=messages.append,
             )
 
@@ -600,6 +611,7 @@ class UnifiedAppTests(unittest.TestCase):
     @patch("definalyzer.app._registry", return_value=0)
     @patch("definalyzer.app._extract")
     @patch("definalyzer.app._crawl")
+    @patch("definalyzer.app.create_provider", new=lambda settings: ScopeFixture())
     def test_complete_workflow_reuses_existing_sources_and_pages(
         self,
         crawl,
@@ -613,9 +625,13 @@ class UnifiedAppTests(unittest.TestCase):
             manager = WorkspaceManager(workspace_root)
             project = manager.create_project(name="Example")
             (project.sources_directory / "source.md").write_text(
-                "# Source",
+                "# Example\nExample uses validator consensus.\n",
                 encoding="utf-8",
             )
+            from definalyzer.research_scope import prepare_scope
+            prepare_scope(project, provider=ScopeFixture())
+            from definalyzer.research_facts import collect_facts
+            collect_facts(project, provider=ScopeFixture())
             for filename in OUTPUT_FILES.values():
                 (project.vault_entity_directory / filename).write_text(
                     "# Generated",
@@ -635,6 +651,7 @@ class UnifiedAppTests(unittest.TestCase):
     @patch("definalyzer.app._verification_plan", return_value=2)
     @patch("definalyzer.app._registry", return_value=0)
     @patch("definalyzer.app._extract")
+    @patch("definalyzer.app.create_provider", new=lambda settings: ScopeFixture())
     def test_complete_workflow_generates_missing_pages_in_template_order(
         self,
         extract,
@@ -651,9 +668,13 @@ class UnifiedAppTests(unittest.TestCase):
                 verification_status="pending",
             )
             (project.sources_directory / "source.md").write_text(
-                "# Source",
+                "# Ordered\nOrdered uses validator consensus.\n",
                 encoding="utf-8",
             )
+
+            dormant = project.project_root / "scope" / "scope.json"
+            dormant.parent.mkdir(parents=True, exist_ok=True)
+            dormant.write_text("invalid dormant V2 state", encoding="utf-8")
 
             def generate(manager_arg, workspace_arg, **kwargs):
                 template = kwargs["template_name"]
@@ -682,6 +703,7 @@ class UnifiedAppTests(unittest.TestCase):
 
     @patch("definalyzer.app._registry", return_value=0)
     @patch("definalyzer.app._extract")
+    @patch("definalyzer.app.create_provider", new=lambda settings: ScopeFixture())
     def test_complete_workflow_rebuilds_only_the_stale_research_page(
         self,
         extract,
@@ -693,9 +715,13 @@ class UnifiedAppTests(unittest.TestCase):
             manager = WorkspaceManager(workspace_root)
             project = manager.create_project(name="Selective")
             (project.sources_directory / "source.md").write_text(
-                "# Source",
+                "# Selective\nSelective uses validator consensus.\n",
                 encoding="utf-8",
             )
+            from definalyzer.research_scope import prepare_scope
+            prepare_scope(project, provider=ScopeFixture())
+            from definalyzer.research_facts import collect_facts
+            collect_facts(project, provider=ScopeFixture())
             prompts = Path(__file__).parents[1] / "prompts"
             for template, filename in OUTPUT_FILES.items():
                 (project.vault_entity_directory / filename).write_text(
@@ -932,6 +958,7 @@ class UnifiedAppTests(unittest.TestCase):
         refresh_market_data.assert_called_once_with(
             workspace=unittest.mock.ANY,
             force=True,
+            asset_id="",
         )
         self.assertTrue(any("1 available; 1 unavailable" in item for item in messages))
 
@@ -978,84 +1005,6 @@ class UnifiedAppTests(unittest.TestCase):
         self.assertTrue(
             any("A concise scoped explanation." in item for item in messages)
         )
-
-    @patch("definalyzer.app.create_provider")
-    def test_dune_command_creates_optional_query_dialogue(self, create_provider):
-        create_provider.return_value = SimpleNamespace(
-            name="fake",
-            generate=lambda prompt, working_directory: ProviderResponse(
-                text=(
-                    "## Assumptions\n- Contract must be confirmed.\n"
-                    "## SQL\n```sql\nSELECT 1 AS amount\n```\n"
-                    "## Expected output\nOne row.\n"
-                    "## Limitations\nNo verification decision."
-                ),
-                provider="fake",
-                command=("fake",),
-            ),
-        )
-        messages = []
-        with tempfile.TemporaryDirectory() as directory:
-            workspace_root = Path(directory) / "output"
-            manager = WorkspaceManager(workspace_root)
-            project = manager.create_project(name="Dune Project")
-            project.verification_page_path.write_text(
-                "# Dune Project — Verification\n\n## Fees\n\n"
-                "### VR-FEE-001 — Fees\n\n| Field | Value |\n|---|---|\n"
-                "| Status | Pending |\n| Claim | Fees accrue. |\n"
-                "| Claim type | On-chain state/events |\n"
-                "| Evidence availability | Public |\n"
-                "| Recommended method | Dune candidate |\n"
-                "| Optional Dune query | Available |\n"
-                "| Check route | Manual |\n| How to check | Query events. |\n"
-                "| Likely source | Ethereum data. |\n"
-                "| Evidence required | Fee totals. |\n",
-                encoding="utf-8",
-            )
-            state = project.project_root / "verification-planning"
-            state.mkdir(parents=True)
-            (state / "verification-catalog.json").write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "entity": "Dune Project",
-                        "entries": [
-                            {
-                                "id": "VR-FEE-001",
-                                "title": "Fees",
-                                "claim": "Fees accrue.",
-                                "claim_type": "On-chain state/events",
-                                "evidence_availability": "Public",
-                                "recommended_method": "Dune candidate",
-                                "dune_eligible": True,
-                                "check_route": "Manual",
-                                "status": "Pending",
-                                "evidence_required": "Fee totals.",
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-            exit_code = main(
-                [
-                    "--workspace",
-                    str(workspace_root),
-                    "dune",
-                    project.slug,
-                    "VR-FEE-001",
-                ],
-                print_fn=messages.append,
-            )
-            session_exists = (
-                project.project_root
-                / "dune-assistant"
-                / "vr-fee-001.json"
-            ).exists()
-
-        self.assertEqual(exit_code, 0)
-        self.assertTrue(session_exists)
-        self.assertTrue(any("was not executed" in item for item in messages))
 
     @patch("crawler.github_importer.import_github_markdown")
     def test_crawl_routes_repository_url_to_github_importer(self, importer):

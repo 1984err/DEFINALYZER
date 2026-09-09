@@ -15,3 +15,5 @@ LICENSE text eol=lf
 *.ps1 text eol=crlf
 *.bat text eol=crlf
 *.cmd text eol=crlf
+# Source snapshots are byte-hashed fixtures; preserve original whitespace and line endings.
+tests/fixtures/extraction_demo/snapshots/*.md -text -whitespace

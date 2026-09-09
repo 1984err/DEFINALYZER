@@ -2,17 +2,26 @@
 
 [MIT licensed](LICENSE)
 
-DEFINALYZER creates concise, fact-first DeFi research notes and can collect raw
-EVM evidence for selected material claims. Research remains useful when
-verification is skipped or unavailable.
+DEFINALYZER is a local, AI-assisted DeFi research workspace. It collects
+official documentation, turns it into concise fact-first notes, organizes
+material verification work, collects supported EVM evidence, answers questions
+from the saved research, and produces evidence-backed reports. Research remains
+useful when verification is skipped or unavailable.
 
 Start here:
+
+[Watch the 45-second DEFINALYZER walkthrough (16:9, with audio)](https://github.com/1984err/DEFINALYZER/blob/main/media/definalyzer-ad/DEFINALYZER-workflow-16x9-music.mp4)
+
+The walkthrough shows the application interface, saved research, verification,
+analysis questions, and management reports, including a chart presentation example.
 
 - [Windows setup and troubleshooting](docs/WINDOWS_SETUP.md)
 - [Beta scope and limitations](docs/LIMITATIONS.md)
 - [Security and data handling](SECURITY.md)
 - [Application architecture](docs/APPLICATION_ARCHITECTURE.md)
+- [Evidence-backed report contract](docs/REPORT_CONTRACT.md)
 - [Local dashboard](docs/DASHBOARD.md)
+- [Asset identities, named navigation, and migration](docs/ASSET_IDENTITIES.md)
 - [Manual prompt workflow](prompts/README.md)
 - [Blockchain collector reference](blockchain_collector/USAGE.md)
 - [Compact fictional research output](examples/research_output/README.md)
@@ -86,6 +95,29 @@ other networks still receive research and explicit manual verification tasks.
 - Section-scoped, read-only AI explanations: available
 - Human-approved evidence evaluation and Obsidian link insertion: available
 - Local project dashboard and Markdown reader: available
+- Evidence-bounded report drafting and independent quality review: available
+- Human-approved Markdown, HTML, and PDF report export: available
+
+## Demo scope
+
+The current demo is intended to establish four dependable capabilities:
+
+1. collect official website or public-GitHub documentation and preserve it as
+   local Markdown
+2. extract concise, decision-relevant research notes instead of copying the
+   documentation into long reports
+3. create a categorized analyst verification checklist, collect raw evidence
+   for supported Ethereum, Arbitrum, and Base checks, and require human approval
+   before a verification result changes
+4. create question-driven or full-review reports from source-supported research,
+   automatically check and repair the draft, revise it while retaining earlier
+   versions, and export an approved revision; see [Reports V2](docs/REPORTS_V2.md)
+
+The demo does not promise complete live-market, historical, governance, or
+cross-chain coverage. Unsupported checks stay visible as analyst work rather
+than being guessed, silently omitted, or treated as disproven. Reports answer
+from the evidence actually collected and include separate analyst notes when
+additional research would materially improve the answer.
 
 ## Install
 
@@ -166,8 +198,6 @@ python main.py ask example-protocol --question "How does the protocol make money
 python main.py ask example-protocol --question "How do liquidations work?" --deep
 python main.py ask example-protocol --page Governance --heading "Material Permissions" --question "What can this role do?"
 python main.py verification-plan example-protocol
-python main.py dune example-protocol VR-FEE-001
-python main.py dune example-protocol VR-FEE-001 --feedback-type error --feedback "Paste the exact Dune error"
 python main.py evaluate example-protocol
 python main.py review example-protocol
 python main.py status example-protocol
@@ -233,7 +263,7 @@ interpretation proposals, and scoped Q&A require the configured AI provider.
 
 The terminal and local dashboard share the typed application boundary in
 `definalyzer/application.py`. It exposes JSON-safe project snapshots, truthful
-action availability, project lifecycle operations, Q&A, Dune dialogue, market
+action availability, project lifecycle operations, Q&A, reports, market
 data, and local paths without duplicating research logic. See the
 [application architecture](docs/APPLICATION_ARCHITECTURE.md).
 
@@ -362,8 +392,15 @@ a qualifying token but automated discovery misses it. The menu records its
 identity, relationship, address, mechanics, and official source without AI,
 then regenerates the token page and links. Current supply fields cannot be
 entered there: they remain exclusively owned by deterministic CoinGecko
-enrichment. Re-entering the same symbol updates that record instead of
-creating a duplicate.
+enrichment. Select the existing named asset to update it. Distinct assets may
+share a symbol; ambiguous terminal updates require the stable asset ID.
+
+Token and coin navigation uses saved asset names and symbols, with originating
+protocols and chains shown as relationships. Asset IDs keep project-specific
+research and market snapshots separate. Existing workspaces can preview the
+additive migration with `python main.py assets migrate` and apply it with
+`python main.py assets migrate --apply`. Original files and report packages are
+preserved; see the [asset guide](docs/ASSET_IDENTITIES.md).
 
 Current supply enrichment runs automatically after registry generation and is
 also independently refreshable through **Refresh current token supply data**
@@ -434,13 +471,11 @@ from the main menu and then **Select a project registry target**. The collector
 fills the documented address, chain, role, and provenance before asking which
 supported read to run.
 
-Checks conservatively classified as public `Dune candidate` entries show an
-optional Dune-query action. DEFINALYZER asks Hermes for one read-only query and
-saves the draft under the matching verification folder. The user runs it in
-Dune and may paste an exact error, additional context, or a result summary/link
-back into the dialogue for a revised query. Every version is retained. No Dune
-API key is used, no query is executed by DEFINALYZER, and neither a query nor a
-pasted result changes verification status automatically.
+Some public on-chain history or aggregate checks may be identified as suitable
+for indexed-query follow-up. The current demo leaves these as analyst tasks.
+Built-in Dune query generation, execution, error handling, and result ingestion
+are deferred until authenticated Dune API support is added. No Dune query is
+currently offered in the dashboard, guided menu, or public command interface.
 
 Evidence evaluation is a separate human-approved stage. `evaluate` creates
 immutable Hermes proposals without changing claim status. `review` displays
@@ -464,6 +499,33 @@ used:
 
 See `prompts/README.md` for fact extraction, normalized registry generation,
 categorized verification pages, and scanner request generation.
+
+## Upcoming additions
+
+These are planned integrations, not current demo capabilities:
+
+- a provider-neutral external-data adapter boundary with saved provenance and
+  dated snapshots
+- DefiLlama protocol, chain, TVL, yield, and fee/revenue data
+- authenticated Dune API query execution and result ingestion for eligible
+  historical on-chain checks
+- Tokenomist unlock and vesting data
+- Sourcify verified-contract metadata
+- optional specialist sources such as Chainlink, L2BEAT, and official issuer
+  feeds where they materially improve a research question
+
+Governance-data integrations will be selected only after a stable official or
+well-defined input source is chosen. New datasets must remain supplementary:
+they may improve reports and verification evidence, but they must not make the
+core documentation workflow dependent on one external vendor.
+
+## Source-supported research
+
+New research runs use structured claims with exact saved source passages and a
+separate support check. Pages expose Source, unanswered questions, and preserved
+original notes with a readable comparison. See [Phase 4 research](docs/RESEARCH_FACTS.md)
+for the workflow, limits and validation. Existing research is refreshed only when
+you run an extraction action; this update does not rerun the saved NEAR project.
 
 ## Release checks
 

@@ -489,6 +489,7 @@ def extract_research_page_chunked(
     if maximum_prompt_characters < 4_000:
         raise ValueError("Maximum provider prompt is too small.")
 
+
     prompts = Path(prompts_root)
     master = (prompts / "master_prompt.md").read_text(encoding="utf-8")
     template = (
@@ -852,7 +853,7 @@ def _build_shared_ledger_prompt(
         "category.\n"
         "- Use plain ASCII punctuation.\n"
         "- Attach the supplied source filename to every fact.\n"
-        "- Preserve qualifications, numbers, dates, and conflicting claims.\n"
+        "- Preserve subject names, scope labels, versions, networks, qualifications, numbers, dates, and conflicting claims.\n"
         "- Do not infer, evaluate truth, add prior knowledge, or write prose.\n"
         "---\n\n"
         "# Source Batch\n\n"
@@ -875,7 +876,7 @@ def _build_reduction_prompt(
         "or risk assessment.\n"
         "- Deduplicate repeated facts.\n"
         "- Preserve conflicts, qualifications, numbers, dates, and source "
-        "filenames.\n"
+        "filenames, subject names, scope labels and applicability. Never combine different subjects into one universal claim.\n"
         "- Remove function-by-function API descriptions, parameter lists, "
         "tutorial steps, code behavior already represented by a higher-level "
         "mechanism, and minor implementation details.\n"

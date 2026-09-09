@@ -1,0 +1,21 @@
+{
+  "Cedar": [
+    "two-thirds threshold",
+    "one-third offline halts finality",
+    "cannot pause withdrawals",
+    "does not receive bridge fees",
+    "bridge operators cannot restore finality"
+  ],
+  "Transit Bridge": [
+    "2% withdrawal fee",
+    "operator may pause bridge withdrawals"
+  ],
+  "Luma Protocol": [
+    "lending fees not automatically token rights",
+    "release 1 seven-day delay versus release 2 one-day delay"
+  ],
+  "LUMA": [
+    "delegation before voting",
+    "no documented fee entitlement"
+  ]
+}

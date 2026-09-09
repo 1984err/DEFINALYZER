@@ -309,6 +309,25 @@ class ExtractionTests(unittest.TestCase):
         self.assertIn("Material contract control", bundle)
         self.assertNotIn("Implementation integration flow", bundle)
 
+    def test_concise_extractor_ignores_leftover_v2_state(self):
+        from unittest.mock import patch
+        from definalyzer.dependencies import research_page_input_fingerprint
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = WorkspaceManager(root / "output").create_project(name="Recovery")
+            (workspace.sources_directory / "source.md").write_text("# Recovery\nDocumented fees vary.\n")
+            prompts = self._write_prompts(root)
+            fingerprint = research_page_input_fingerprint(workspace, prompts, "protocol-overview")
+            for name in ("scope/scope.json", "facts/current.json", "facts/pages.json"):
+                path = workspace.project_root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("invalid dormant V2 state")
+            with patch("definalyzer.research_facts.extract_fact_page", side_effect=AssertionError("V2 must not run")):
+                result = extract_research_page(workspace=workspace, template_name="protocol-overview",
+                                               provider=FakeProvider(), prompts_root=prompts)
+            self.assertIn("Protocol Overview", result.output_path.read_text())
+            self.assertEqual(fingerprint, research_page_input_fingerprint(workspace, prompts, "protocol-overview"))
+
     def test_chunked_extraction_saves_ledgers_and_final_page(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -323,6 +342,9 @@ class ExtractionTests(unittest.TestCase):
                 encoding="utf-8",
             )
             prompts = self._write_prompts(root)
+            dormant = workspace.project_root / "scope" / "scope.json"
+            dormant.parent.mkdir(parents=True)
+            dormant.write_text("invalid dormant V2 state")
             provider = ChunkProvider()
 
             result = extract_research_page_chunked(

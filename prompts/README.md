@@ -66,5 +66,7 @@ but does not evaluate claims. Evidence evaluation and research-link insertion
 are later workflow steps.
 
 When a public on-chain history or aggregate check is marked `Dune candidate`,
-the application may offer its optional copy/paste query dialogue. This is not
-automatic Dune execution and does not make a verification decision.
+that label is an analyst routing suggestion only. Query generation and
+execution are not part of the current demo; authenticated Dune API support is
+planned for a later integration phase. The label never makes a verification
+decision.

@@ -26,6 +26,7 @@
         <div><p class="eyebrow" id="entity-type">RESEARCH PROJECT</p><h1 id="project-title">Select a project</h1></div>
         <div class="top-actions"><button id="refresh">Refresh dashboard</button><button id="new-project" class="primary">+ New project</button></div>
       </header>
+      <section id="active-progress" class="active-progress panel" hidden aria-live="polite"></section>
 
       <section id="welcome" class="welcome">
         <img class="welcome-logo" src="/assets/definalyzer-logo.png" alt="DEFINALYZER — AI Assisted DeFi Research">
@@ -37,18 +38,19 @@
       </section>
 
       <section id="workspace" hidden>
+        <section id="scope-summary" class="panel" hidden aria-label="Research scope"></section>
         <div class="content-grid">
           <aside class="page-panel panel">
-            <div class="panel-heading project-controls-heading"><button id="tools-toggle">Project Controls</button></div>
+            <div class="panel-heading project-controls-heading"><button id="reports-open" class="primary">Reports</button><button id="tools-toggle">Project Controls</button></div>
             <label class="search"><span>⌕</span><input id="page-search" placeholder="Filter pages"></label>
             <nav id="pages" aria-label="Research pages"></nav>
           </aside>
           <article id="reader-panel" class="reader panel">
             <div id="reader-empty" class="empty"><span>◫</span><h2>Choose a page</h2><p>Select a research page from the navigation.</p></div>
-            <div id="reader" hidden><div class="reader-heading"><div class="reader-title"><p class="eyebrow" id="page-path"></p><h2 id="page-title"></h2></div><div class="reader-actions"><button id="expand-reader" type="button" aria-pressed="false" aria-controls="reader-panel" title="Use the full dashboard width for reading">Expand page</button><button id="copy-markdown">Copy Markdown</button></div></div><div id="markdown"></div></div>
+            <div id="reader" hidden><div class="reader-heading"><div class="reader-title"><p class="eyebrow" id="page-path"></p><h2 id="page-title"></h2></div><div class="reader-actions"><button id="refresh-token-supply" type="button" hidden>Refresh token supply</button><button id="expand-reader" type="button" aria-pressed="false" aria-controls="reader-panel" title="Use the full dashboard width for reading">Expand page</button><button id="copy-markdown">Copy Markdown</button></div></div><div id="markdown"></div></div>
           </article>
           <aside class="activity panel">
-            <div class="panel-heading"><h2>Activity</h2><span id="job-count" class="badge">0</span></div>
+            <div class="panel-heading"><h2>Activity</h2><span id="job-count" class="badge">0</span><button type="button" id="clear-activity" title="Clear finished activity; active operations stay visible">Clear finished</button></div>
             <div id="jobs" class="jobs"><p class="muted">No dashboard jobs yet.</p></div>
           </aside>
         </div>
@@ -59,7 +61,10 @@
   <dialog id="tools-dialog"><form method="dialog"><div class="dialog-head"><div><p class="eyebrow">PROJECT CONTROLS</p><h2 id="tools-title">Tools</h2></div><button value="cancel" aria-label="Close">×</button></div><div id="tool-list" class="tool-list"></div></form></dialog>
   <dialog id="form-dialog"><form id="dynamic-form"><div class="dialog-head"><div><p class="eyebrow" id="form-kicker">ACTION</p><h2 id="form-title"></h2></div><button type="button" id="form-close" aria-label="Close">×</button></div><div id="form-fields"></div><p id="form-error" class="error"></p><div class="dialog-actions"><button type="button" id="form-cancel">Cancel</button><button class="primary" type="submit" id="form-submit">Run</button></div></form></dialog>
   <dialog id="guide-dialog" class="guide-dialog"><div class="dialog-head"><div><p class="eyebrow">WORKSPACE HELP</p><h2>Dashboard Guide</h2></div><button type="button" id="guide-close" aria-label="Close">×</button></div><div id="guide-content" class="guide-content"></div></dialog>
+  <dialog id="reports-dialog" class="reports-dialog"><div class="dialog-head"><div><p class="eyebrow">EVIDENCE-BACKED ANALYSIS</p><h2>Reports</h2></div><button type="button" id="reports-close" aria-label="Close">×</button></div><div class="reports-toolbar"><p>Create focused answers or full project reviews without changing the concise research pages.</p><button type="button" id="new-report" class="primary">+ New report</button></div><div id="report-list" class="report-list"></div></dialog>
+  <dialog id="fact-dialog" class="guide-dialog"><div class="dialog-head"><h2 id="fact-title">Source support</h2><button id="fact-close" type="button" aria-label="Close">×</button></div><div id="fact-content" class="guide-content"></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/assets/app.js"></script>
+  <script src="/assets/reports-v2.js"></script>
 </body>
 </html>

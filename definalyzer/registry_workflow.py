@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -19,6 +19,8 @@ from .source_coverage import (
     token_coverage_complete,
 )
 from .workspace import ProjectWorkspace
+from .asset_identity import (asset_page, asset_kind, merge_tokens, register_tokens,
+                             save_context_page, resolve_asset, registry_writer)
 
 
 AAVE_ADDRESS_BOOK_URL = (
@@ -39,7 +41,7 @@ CHAIN_COIN_SCOPE = (
     "bridged assets, wrapped versions, application tokens, stablecoins, and "
     "ecosystem reward assets. A native coin normally has no contract address."
 )
-TOKEN_DISCOVERY_VERSION = 3
+TOKEN_DISCOVERY_VERSION = 4
 PLACEHOLDER_IDENTITIES = {
     "-",
     "n/a",
@@ -122,6 +124,13 @@ class TokenRecord:
     mint_authority: str
     utility: str
     source: str
+    asset_id: str = ""
+    origin: str = "discovered"
+    asset_kind: str = ""
+
+
+TOKEN_FIELDS = tuple(name for name in TokenRecord.__dataclass_fields__
+                     if name not in {"asset_id", "origin", "asset_kind"})
 
 
 @dataclass(frozen=True)
@@ -150,17 +159,24 @@ class RegistryResult:
 
 
 def project_tokens(workspace: ProjectWorkspace) -> tuple[TokenRecord, ...]:
-    return _load_existing_tokens(workspace.registry_directory / "registry.json")
+    tokens = _load_existing_tokens(workspace.registry_directory / "registry.json")
+    result = []
+    for token in tokens:
+        entity = resolve_asset(workspace, asdict(token))
+        result.append(replace(token, asset_id=entity["entity_id"], asset_kind=entity["kind"])
+                      if entity else token)
+    return tuple(result)
 
 
 def _asset_section(workspace: ProjectWorkspace) -> str:
-    return "Coins" if workspace.document["entity_type"] == "chain" else "Tokens"
+    return "Coins" if workspace.document["entity_type"] in {"chain", "coin"} else "Tokens"
 
 
 def _asset_scope(workspace: ProjectWorkspace) -> str:
-    return CHAIN_COIN_SCOPE if workspace.document["entity_type"] == "chain" else PROTOCOL_TOKEN_SCOPE
+    return CHAIN_COIN_SCOPE if workspace.document["entity_type"] in {"chain", "coin"} else PROTOCOL_TOKEN_SCOPE
 
 
+@registry_writer
 def upsert_manual_token(
     *,
     workspace: ProjectWorkspace,
@@ -176,11 +192,8 @@ def upsert_manual_token(
             raise ValueError("Project registry must be a JSON object.")
         existing_document = loaded
 
-    by_symbol = {
-        row.symbol.casefold(): row for row in _load_existing_tokens(registry_path)
-    }
-    by_symbol[token.symbol.casefold()] = token
-    tokens = tuple(sorted(by_symbol.values(), key=lambda row: row.symbol.casefold()))
+    tokens = merge_tokens(project_tokens(workspace), [token], manual=True)
+    tokens = register_tokens(workspace, tokens)
 
     address_rows = existing_document.get("addresses", [])
     addresses = tuple(
@@ -218,6 +231,7 @@ def upsert_manual_token(
         workspace.vault_entity_directory,
         tokens,
         section=_asset_section(workspace),
+        workspace=workspace,
     )
     address_page = (
         workspace.vault_entity_directory / "Registry.md"
@@ -263,6 +277,7 @@ def _validate_manual_token(token: TokenRecord) -> None:
             raise ValueError("Token address must be an EVM address or Solana mint.")
 
 
+@registry_writer
 def run_registry_workflow(
     *,
     workspace: ProjectWorkspace,
@@ -277,25 +292,29 @@ def run_registry_workflow(
         )
 
     registry_path = workspace.registry_directory / "registry.json"
-    tokens = list(_clear_previous_address_enrichment(_load_existing_tokens(registry_path)))
+    tokens = list(_clear_previous_address_enrichment(project_tokens(workspace)))
+    previous_registry = json.loads(registry_path.read_text(encoding="utf-8")) if registry_path.exists() else {}
     discovery_complete = _token_discovery_complete(
         registry_path,
         coverage_complete=token_coverage_complete(workspace),
         tokenomics_digest=_file_digest(tokenomics),
     )
-    if not tokens and not discovery_complete:
+    attempted = False
+    discovered = ()
+    if not discovery_complete and provider is not None:
+        attempted = True
+        discovered = discover_native_tokens(
+            provider=provider,
+            tokenomics=tokenomics.read_text(encoding="utf-8"),
+            working_directory=workspace.project_root,
+            entity_type=workspace.document["entity_type"],
+        )
+        tokens = list(merge_tokens(tokens, discovered))
+    elif not tokens and not discovery_complete:
         if provider is None:
             raise RuntimeError(
                 "An AI provider is required for initial token discovery."
             )
-        tokens = list(
-            discover_native_tokens(
-                provider=provider,
-                tokenomics=tokenomics.read_text(encoding="utf-8"),
-                working_directory=workspace.project_root,
-                entity_type=workspace.document["entity_type"],
-            )
-        )
     networks: list[dict[str, Any]] = []
     addresses = list(_extract_documented_addresses(workspace.sources_directory))
     addresses.extend(
@@ -305,22 +324,20 @@ def run_registry_workflow(
     address_page: Path | None = None
     sources: list[str] = []
 
-    if workspace.slug == "aave-v3":
-        text_fetcher = fetch_text or _fetch_text
-        json_fetcher = fetch_json or _fetch_json
-        address_book = text_fetcher(AAVE_ADDRESS_BOOK_URL)
+    from .supplemental_sources import collect_registered_enrichment
+    enrichment = collect_registered_enrichment(workspace, fetch_text=fetch_text or _fetch_text,
+                                               fetch_json=fetch_json or _fetch_json)
+    if enrichment:
+        address_book, network_response, registered_sources = enrichment
         tokens = list(_enrich_aave_tokens(tokens, address_book))
         addresses.extend(_parse_aave_core_addresses(address_book))
-        network_response = json_fetcher(
-            AAVE_GRAPHQL_URL,
-            {"query": "query Chains { chains { name chainId } }"},
-        )
         networks = _parse_aave_chains(network_response)
-        sources.extend((AAVE_ADDRESS_BOOK_URL, AAVE_GRAPHQL_URL))
+        sources.extend(registered_sources)
         network_page = _write_network_page(workspace, networks)
 
     addresses = list(_merge_address_records(addresses))
     tokens = list(_enrich_tokens_from_documented_addresses(tokens, addresses))
+    tokens = list(register_tokens(workspace, tokens))
     if addresses:
         address_page = _write_address_page(workspace, addresses)
 
@@ -331,6 +348,9 @@ def run_registry_workflow(
         "generated_at": _timestamp(),
         "tokenomics_digest": _file_digest(tokenomics),
         "token_discovery_version": TOKEN_DISCOVERY_VERSION,
+        "discovery_input_digest": _discovery_input_digest(workspace) if attempted or discovery_complete else None,
+        "discovered_candidates": ([asdict(row) for row in discovered] if attempted
+                                  else previous_registry.get("discovered_candidates", [])),
         "token_discovery_status": (
             "complete"
             if token_coverage_complete(workspace)
@@ -349,11 +369,11 @@ def run_registry_workflow(
     token_pages = tuple(
         _write_token_page(workspace, token, addresses) for token in tokens
     )
-    _remove_stale_token_pages(workspace, tokens)
     linked_pages = link_token_references(
         workspace.vault_entity_directory,
         tokens,
         section=_asset_section(workspace),
+        workspace=workspace,
     )
     _update_protocol_index(
         workspace,
@@ -361,6 +381,12 @@ def run_registry_workflow(
         network_page,
         address_page,
     )
+    # Link insertion changes the Tokenomics file deterministically. Commit the
+    # post-link fingerprint so an unchanged resume does not rediscover forever.
+    registry_document["tokenomics_digest"] = _file_digest(tokenomics)
+    if attempted or discovery_complete:
+        registry_document["discovery_input_digest"] = _discovery_input_digest(workspace)
+    _write_generated_json(registry_path, registry_document)
     return RegistryResult(
         registry_path=registry_path,
         network_page=network_page,
@@ -379,7 +405,7 @@ def discover_native_tokens(
     working_directory: Path,
     entity_type: str = "protocol",
 ) -> tuple[TokenRecord, ...]:
-    is_chain = entity_type == "chain"
+    is_chain = entity_type in {"chain", "coin"}
     scope = CHAIN_COIN_SCOPE if is_chain else PROTOCOL_TOKEN_SCOPE
     subject = "Chain-Native Coin" if is_chain else "Native and Protocol-Issued Token"
     relationship = "chain-level monetary or consensus economics" if is_chain else "protocol-level economics"
@@ -423,7 +449,7 @@ def discover_native_tokens(
 
     tokens = []
     seen = set()
-    required = tuple(TokenRecord.__dataclass_fields__)
+    required = TOKEN_FIELDS
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("Each discovered token must be a JSON object.")
@@ -446,14 +472,15 @@ def discover_native_tokens(
                 "Discovered token symbol must be 1-20 letters, numbers, "
                 "dots, underscores, or hyphens."
             )
-        if symbol in seen:
+        identity = (symbol, values["name"].casefold(), values["network"], values["address"])
+        if identity in seen:
             continue
-        seen.add(symbol)
+        seen.add(identity)
         values["symbol"] = symbol
         # Provenance is fixed by the deterministic input boundary; a model
         # cannot claim a source outside the Tokenomics page it received.
         values["source"] = "Tokenomics.md"
-        tokens.append(TokenRecord(**values))
+        tokens.append(TokenRecord(**values, asset_kind="coin" if is_chain else "token"))
     return tuple(tokens)
 
 
@@ -462,6 +489,7 @@ def link_token_references(
     tokens: list[TokenRecord] | tuple[TokenRecord, ...],
     *,
     section: str = "Tokens",
+    workspace: ProjectWorkspace | None = None,
 ) -> tuple[Path, ...]:
     changed: list[Path] = []
     for path in sorted(protocol_directory.glob("*.md")):
@@ -475,9 +503,16 @@ def link_token_references(
             for index, line in enumerate(raw_lines)
         ]
         for token in tokens:
-            plain_link = f"[[{section}/{token.symbol}/Index|{token.symbol}]]"
+            if sum(row.symbol.casefold() == token.symbol.casefold() for row in tokens) > 1:
+                continue  # A ticker alone cannot choose among distinct assets.
+            target = f"{section}/{token.symbol}/Index"
+            if workspace:
+                page = asset_page(workspace, asdict(token))
+                if page:
+                    target = page.relative_to(workspace.vault_root).with_suffix("").as_posix()
+            plain_link = f"[[{target}|{token.symbol}]]"
             table_link = (
-                f"[[{section}/{token.symbol}/Index\\|{token.symbol}]]"
+                f"[[{target}\\|{token.symbol}]]"
             )
             if any(
                 eligible[index]
@@ -511,6 +546,8 @@ def _enrich_aave_tokens(
     tokens: list[TokenRecord],
     address_book: str,
 ) -> tuple[TokenRecord, ...]:
+    if len({t.symbol.casefold() for t in tokens}) != len(tokens):
+        return tuple(tokens)  # A symbol-only external registry cannot disambiguate these.
     addresses = {
         match.group("symbol"): match.group("address")
         for match in re.finditer(
@@ -566,6 +603,9 @@ def _enrich_aave_tokens(
 
     enriched = []
     for token in by_symbol.values():
+        if token.origin == "manual":
+            enriched.append(token)
+            continue
         address = addresses.get(token.symbol, token.address)
         source = token.source
         if token.symbol in addresses:
@@ -1078,6 +1118,9 @@ def _enrich_tokens_from_documented_addresses(
 ) -> tuple[TokenRecord, ...]:
     enriched = []
     for token in tokens:
+        if token.origin == "manual" or sum(t.symbol.casefold() == token.symbol.casefold() for t in tokens) > 1:
+            enriched.append(token)
+            continue
         matches = [
             record
             for record in addresses
@@ -1120,6 +1163,9 @@ def _clear_previous_address_enrichment(
     """Remove address data derived during an earlier registry pass."""
     cleaned = []
     for token in tokens:
+        if token.origin == "manual":
+            cleaned.append(token)
+            continue
         source_parts = [part.strip() for part in token.source.split(";")]
         derived = [part for part in source_parts[1:] if re.search(r"#L\d+$", part)]
         if not derived:
@@ -1211,8 +1257,10 @@ def _write_token_page(
     token: TokenRecord,
     addresses: list[AddressRecord] | tuple[AddressRecord, ...] = (),
 ) -> Path:
-    is_coin = workspace.document["entity_type"] == "chain"
-    directory = workspace.vault_root / _asset_section(workspace) / token.symbol
+    if not token.asset_id:
+        token = register_tokens(workspace, [token])[0]
+    is_coin = token.asset_kind == "coin"
+    directory = asset_page(workspace, asdict(token), context=True).parent
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "Index.md"
     deployments = [
@@ -1220,6 +1268,11 @@ def _write_token_page(
         for record in addresses
         if _is_token_deployment(record.name, token)
     ]
+    registry_file = workspace.registry_directory / "registry.json"
+    if registry_file.exists():
+        registered = json.loads(registry_file.read_text(encoding="utf-8")).get("tokens", [])
+        if sum(str(r.get("symbol", "")).casefold() == token.symbol.casefold() for r in registered) > 1:
+            deployments = []  # Show this asset's explicitly documented deployment only.
     if deployments:
         address_rows = "".join(
             f"| {_markdown_cell(record.chain)} | "
@@ -1235,7 +1288,7 @@ def _write_token_page(
             f"`{_markdown_cell(token.address)}` | "
             f"{_render_source_reference(workspace, token.source)} |\n"
         )
-    market_snapshot = load_market_snapshot(workspace, token.symbol)
+    market_snapshot = load_market_snapshot(workspace, token.symbol, asset_id=token.asset_id)
     market_section = _render_market_snapshot(market_snapshot, is_coin=is_coin)
     text = (
         "---\n"
@@ -1243,10 +1296,10 @@ def _write_token_page(
         f'entity: "{token.symbol}"\n'
         f'entity_type: "{"coin" if is_coin else "token"}"\n'
         f'{"parent_chain" if is_coin else "parent_protocol"}: "{workspace.name}"\n'
-        f'verification_status: "{workspace.document["verification_status"]}"\n'
+        'verification_status: "not_assessed"\n'
         f'generated_at: "{_timestamp()}"\n'
         "---\n\n"
-        f"# {_markdown_text(token.symbol)}\n\n"
+        f"# {_markdown_text(token.name)} ({_markdown_text(token.symbol)})\n\n"
         "## Identity\n\n"
         "| Field | Value |\n|---|---|\n"
         f"| Name | {_markdown_cell(token.name)} |\n"
@@ -1275,12 +1328,21 @@ def _write_token_page(
         )
         + "- `Not documented` fields remain open for official-source or onchain enrichment.\n"
     )
-    _write_generated_markdown(path, text, legacy_markers=("parent_protocol:", "parent_chain:"))
-    return path
+    registry_path = workspace.registry_directory / "registry.json"
+    if registry_path.exists() and token.origin == "manual":
+        document = json.loads(registry_path.read_text(encoding="utf-8"))
+        candidates = [r for r in document.get("discovered_candidates", [])
+                      if str(r.get("symbol", "")).casefold() == token.symbol.casefold()
+                      and any(r.get(k) != getattr(token, k) for k in TOKEN_FIELDS if k != "source")]
+        if candidates:
+            text += "\n## Discovery Review\n\nNew documentation produced a different candidate for this asset. Your manual record was preserved; inspect the saved registry candidates before changing it.\n"
+    return save_context_page(workspace, token, text)
 
 
+@registry_writer
 def refresh_token_pages_from_registry(
     workspace: ProjectWorkspace,
+    *, asset_id: str = "",
 ) -> tuple[Path, ...]:
     """Rewrite generated token pages after an optional enrichment refresh."""
 
@@ -1292,10 +1354,11 @@ def refresh_token_pages_from_registry(
     address_rows = document.get("addresses")
     if not isinstance(token_rows, list) or not isinstance(address_rows, list):
         raise ValueError("Project registry has invalid token or address data.")
-    tokens = tuple(TokenRecord(**row) for row in token_rows)
+    tokens = register_tokens(workspace, tuple(TokenRecord(**row) for row in token_rows))
     addresses = tuple(AddressRecord(**row) for row in address_rows)
     return tuple(
         _write_token_page(workspace, token, addresses) for token in tokens
+        if not asset_id or token.asset_id == asset_id
     )
 
 
@@ -1457,13 +1520,17 @@ def _update_protocol_index(
             f"[[{entity_folder}/{workspace.name}/Registry|Contract Registry]]"
         )
     asset_section = _asset_section(workspace)
-    entries.extend(f"[[{asset_section}/{token.symbol}/Index|{token.symbol}]]" for token in tokens)
+    for token in tokens:
+        page = asset_page(workspace, asdict(token))
+        if page:
+            target = page.relative_to(workspace.vault_root).with_suffix("").as_posix()
+            entries.append(f"[[{target}|{_markdown_text(token.name)} ({token.symbol})]]")
     valid_symbols = {token.symbol.casefold() for token in tokens}
     updated = re.sub(
         rf"(?m)^- \[\[{asset_section}/([^/\]]+)/Index\|[^\]]+\]\]\n?",
         lambda match: (
             match.group(0)
-            if match.group(1).casefold() in valid_symbols
+            if match.group(1).casefold() not in PLACEHOLDER_IDENTITIES
             else ""
         ),
         text,
@@ -1571,6 +1638,7 @@ def _entity_folder(workspace: ProjectWorkspace) -> str:
         "protocol": "Protocols",
         "chain": "Chains",
         "token": "Tokens",
+        "coin": "Coins",
     }[str(workspace.document["entity_type"])]
 
 
@@ -1697,12 +1765,18 @@ def _is_table_separator(cells: list[str]) -> bool:
 
 
 def _fetch_text(url: str) -> str:
+    from .cancellation import check_cancelled
+    check_cancelled()
     request = Request(url, headers={"Accept": "text/plain"})
     with urlopen(request, timeout=30) as response:
-        return response.read().decode("utf-8")
+        result = response.read().decode("utf-8")
+    check_cancelled()
+    return result
 
 
 def _fetch_json(url: str, body: dict[str, Any]) -> dict[str, Any]:
+    from .cancellation import check_cancelled
+    check_cancelled()
     request = Request(
         url,
         data=json.dumps(body).encode("utf-8"),
@@ -1711,6 +1785,7 @@ def _fetch_json(url: str, body: dict[str, Any]) -> dict[str, Any]:
     )
     with urlopen(request, timeout=30) as response:
         document = json.loads(response.read())
+    check_cancelled()
     if not isinstance(document, dict):
         raise ValueError("Registry API returned a non-object response.")
     return document
@@ -1723,13 +1798,15 @@ def _load_existing_tokens(path: Path) -> tuple[TokenRecord, ...]:
     rows = document.get("tokens") if isinstance(document, dict) else None
     if not isinstance(rows, list):
         return ()
-    fields = tuple(TokenRecord.__dataclass_fields__)
+    fields = TOKEN_FIELDS
     tokens = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         if all(isinstance(row.get(field), str) for field in fields):
-            token = TokenRecord(**{field: row[field] for field in fields})
+            token = TokenRecord(**{field: row[field] for field in fields},
+                                **{key: row.get(key, default) for key, default in
+                                   (("asset_id", ""), ("origin", "manual" if document.get("token_discovery_status") == "manual_entries" else "discovered"), ("asset_kind", ""))})
             if (
                 token.name.strip().casefold() in PLACEHOLDER_IDENTITIES
                 or token.symbol.strip().casefold() in PLACEHOLDER_IDENTITIES
@@ -1750,7 +1827,7 @@ def registry_needs_token_discovery(workspace: ProjectWorkspace) -> bool:
         tokenomics_digest=_file_digest(tokenomics),
     ):
         return False
-    return not bool(_load_existing_tokens(path))
+    return True
 
 
 def _token_discovery_complete(
@@ -1765,15 +1842,25 @@ def _token_discovery_complete(
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
+    workspace_root = path.parent.parent.parent
+    project_manifest = workspace_root / "projects" / path.parent.name / "project.json"
+    if not project_manifest.exists():
+        return False
+    workspace = ProjectWorkspace(workspace_root, json.loads(project_manifest.read_text(encoding="utf-8")))
     return bool(
-        coverage_complete
-        and
         isinstance(document, dict)
-        and document.get("token_discovery_status") == "complete"
         and document.get("token_discovery_version")
         == TOKEN_DISCOVERY_VERSION
         and document.get("tokenomics_digest") == tokenomics_digest
+        and document.get("discovery_input_digest") == _discovery_input_digest(workspace)
     )
+
+
+def _discovery_input_digest(workspace: ProjectWorkspace) -> str:
+    from .dependencies import source_corpus_fingerprint
+    return hashlib.sha256((source_corpus_fingerprint(workspace) +
+        _file_digest(workspace.vault_entity_directory / "Tokenomics.md") +
+        str(TOKEN_DISCOVERY_VERSION)).encode()).hexdigest()
 
 
 def _file_digest(path: Path) -> str:

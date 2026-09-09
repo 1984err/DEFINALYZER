@@ -56,7 +56,8 @@ def matching_internal_urls(
     return sorted(
         url
         for url in candidates
-        if urlparse(url).netloc.lower() == domain.lower()
+        if urlparse(url).scheme in {"http", "https"}
+        and urlparse(url).netloc.lower() == domain.lower()
         and fnmatch.fnmatchcase(url, pattern)
     )
 

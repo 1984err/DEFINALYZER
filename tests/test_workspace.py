@@ -32,6 +32,8 @@ class WorkspaceManagerTests(unittest.TestCase):
             self.assertTrue(project.evidence_directory.exists())
             self.assertTrue(project.vault_entity_directory.exists())
             self.assertTrue(project.verification_directory.exists())
+            self.assertTrue(project.reports_directory.exists())
+            self.assertTrue((project.vault_root / "Reports").exists())
             self.assertTrue(
                 (project.vault_root / "Analyst Reviews").exists()
             )

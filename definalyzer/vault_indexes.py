@@ -61,7 +61,7 @@ def _projects(root: Path) -> tuple[dict, ...]:
 
 def _research_index(projects: tuple[dict, ...], root: Path) -> str:
     rows = []
-    folders = {"protocol": "Protocols", "chain": "Chains", "token": "Tokens"}
+    folders = {"protocol": "Protocols", "chain": "Chains", "token": "Tokens", "coin": "Coins"}
     for project in projects:
         entity_type = str(project.get("entity_type", "protocol"))
         folder = folders.get(entity_type, "Protocols")
@@ -133,6 +133,16 @@ def _asset_index(
     column: str,
 ) -> str:
     rows = []
+    from .asset_identity import inventory, load_catalog
+    catalog = load_catalog(vault.parent)
+    for asset in inventory(vault.parent):
+        if asset["kind"] != entity_type:
+            continue
+        target = asset["path"].removesuffix(".md")
+        related = ", ".join(catalog["projects"][s]["name"] for s in asset["projects"])
+        entity = catalog["entities"][asset["asset_id"]]
+        networks = ", ".join(str(d["network"] or "Not documented") for d in entity["deployments"])
+        rows.append(f"| {_table_wikilink(target, asset['title'])} | {_cell(related)} | {_cell(networks)} |\n")
     parents = {
         str(project.get("name", "")): _entity_folder(
             str(project.get("entity_type", "protocol"))
@@ -141,6 +151,11 @@ def _asset_index(
     }
     for page in sorted((vault / section).glob("*/Index.md")):
         text = page.read_text(encoding="utf-8")
+        if 'generated_by: "definalyzer_asset_identity"' in text:
+            continue
+        legacy_parent = _frontmatter_value(text, "parent_protocol") or _frontmatter_value(text, "parent_chain")
+        if any(p["name"] == legacy_parent for p in catalog["projects"].values()):
+            continue
         if f'entity_type: "{entity_type}"' not in text:
             continue
         symbol = _frontmatter_value(text, "entity") or page.parent.name
@@ -279,4 +294,5 @@ def _entity_folder(entity_type: str) -> str:
         "protocol": "Protocols",
         "chain": "Chains",
         "token": "Tokens",
+        "coin": "Coins",
     }.get(entity_type, "Protocols")
